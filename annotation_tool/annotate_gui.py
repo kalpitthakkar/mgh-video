@@ -118,7 +118,9 @@ class AnnotationGUI(object):
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, i)
                 ret, im = self.cap.read()
                 if im is None:
-                    break
+                    i = 0
+                    status = 'stay'
+                    continue
                 r = playerwidth / im.shape[1]
                 dim = (int(playerwidth), int(im.shape[0] * r))
                 im = cv2.resize(im, dim, interpolation=cv2.INTER_AREA)
