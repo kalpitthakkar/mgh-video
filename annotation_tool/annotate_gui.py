@@ -72,7 +72,7 @@ class AnnotationGUI(object):
         self.annotTool.initAnnotations(self.annotTool.joints, self.annotTool.joint_radius, self.annots,
                 player_wname, playerwidth, playerheight, colorDict, self.annotTool.multiframe)
         cv2.setMouseCallback(player_wname, self.annotTool.dragCircle, self.annotTool.annotObj)
-        self.controls = np.zeros((60, int(playerwidth * 2)), np.uint8)
+        self.controls = np.zeros((90, int(playerwidth * 2)), np.uint8)
         y0, dy = 20, 25
         for i, line in enumerate(self.annotTool.controls_text.split('\n')):
             y = y0 + i * dy
@@ -139,10 +139,71 @@ class AnnotationGUI(object):
                           ord('x'): 'incorrect_num',
                           ord('='): 'good',
                           ord('-'): 'bad',
+                          # Keycodes for these obtained from online sources
+                          ord('i'): 'move_marker_up',
+                          ord('m'): 'move_marker_down',
+                          ord('j'): 'move_marker_left',
+                          ord('l'): 'move_marker_right',
                           255: status,
                           -1: status,
                           27: 'exit'}[key]
 
+                if status == 'move_marker_up':
+                    for joint_name in self.annotTool.annotObj.joints:
+                        joint = self.annotTool.annotObj.joints[joint_name]
+                        if joint.focus:
+                            self.annotTool.annotObj.selectedJoint = joint
+
+                    if self.annotTool.annotObj.selectedJoint:
+                        joint = self.annotTool.annotObj.selectedJoint
+                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x, curr_y-1, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y-1, self.annotTool.annotObj)
+
+                    status = 'stay'
+                if status == 'move_marker_down':
+                    for joint_name in self.annotTool.annotObj.joints:
+                        joint = self.annotTool.annotObj.joints[joint_name]
+                        if joint.focus:
+                            self.annotTool.annotObj.selectedJoint = joint
+
+                    if self.annotTool.annotObj.selectedJoint:
+                        joint = self.annotTool.annotObj.selectedJoint
+                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x, curr_y+1, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y+1, self.annotTool.annotObj)
+
+                    status = 'stay'
+                if status == 'move_marker_left':
+                    for joint_name in self.annotTool.annotObj.joints:
+                        joint = self.annotTool.annotObj.joints[joint_name]
+                        if joint.focus:
+                            self.annotTool.annotObj.selectedJoint = joint
+
+                    if self.annotTool.annotObj.selectedJoint:
+                        joint = self.annotTool.annotObj.selectedJoint
+                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x-1, curr_y, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('releaseMouseButton')(curr_x-1,curr_y, self.annotTool.annotObj)
+
+                    status = 'stay'
+                if status == 'move_marker_right':
+                    for joint_name in self.annotTool.annotObj.joints:
+                        joint = self.annotTool.annotObj.joints[joint_name]
+                        if joint.focus:
+                            self.annotTool.annotObj.selectedJoint = joint
+
+                    if self.annotTool.annotObj.selectedJoint:
+                        joint = self.annotTool.annotObj.selectedJoint
+                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x+1, curr_y, self.annotTool.annotObj)
+                        self.annotTool.event.trigger('releaseMouseButton')(curr_x+1,curr_y, self.annotTool.annotObj)
+
+                    status = 'stay'
                 if status == 'play':
                     frame_rate = cv2.getTrackbarPos('F', player_wname)
                     sleep((0.1 - frame_rate / 1000.0) ** 21021)

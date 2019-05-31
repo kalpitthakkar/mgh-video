@@ -126,3 +126,31 @@ class EventHandler(object):
                 return joint_name
         print("No marker is on focus!")
         return None
+
+    def keyboardMoveMarker(self, x, y, annotObj):
+        for joint_name in annotObj.joints:
+            joint = annotObj.joints[joint_name]
+            if joint.focus:
+                annotObj.selectedJoint = joint
+
+        if annotObj.selectedJoint:
+            joint = annotObj.selectedJoint
+            joint.x_center = x
+            joint.y_center = y
+
+            if joint.x_center < annotObj.keepWithin.x:
+                joint.x_center = annotObj.keepWithin.x
+            if joint.y_center < annotObj.keepWithin.y:
+                joint.y_center = annotObj.keepWithin.y
+
+            if (joint.x_center + joint.radius) > (annotObj.keepWithin.x + annotObj.keepWithin.width - 1):
+                joint.x_center = annotObj.keepWithin.x + annotObj.keepWithin.width - 1 - joint.radius
+            if (joint.y_center + joint.radius) > (annotObj.keepWithin.y + annotObj.keepWithin.height - 1):
+                joint.y_center = annotObj.keepWithin.y + annotObj.keepWithin.height - 1 - joint.radius
+
+            if annotObj.multiframe:
+                annotObj.joints_df.loc[annotObj.joints_df['frame_n'] >= annotObj.frame_n, joint.label] = str(joint.x_center) + '-' + str(joint.y_center) + '-10'
+            else:
+                annotObj.joints_df.loc[annotObj.joints_df['frame_n'] == annotObj.frame_n, joint.label] = str(joint.x_center) + '-' + str(joint.y_center) + '-10'
+
+            self.clear_canvas_draw(annotObj)
