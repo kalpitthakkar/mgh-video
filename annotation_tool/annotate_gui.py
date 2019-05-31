@@ -164,6 +164,7 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y-1, self.annotTool.annotObj)
 
                     status = 'stay'
+                    self.annots.to_csv(a_path, index=False)
                 if status == 'move_marker_down':
                     for joint_name in self.annotTool.annotObj.joints:
                         joint = self.annotTool.annotObj.joints[joint_name]
@@ -178,6 +179,7 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y+1, self.annotTool.annotObj)
 
                     status = 'stay'
+                    self.annots.to_csv(a_path, index=False)
                 if status == 'move_marker_left':
                     for joint_name in self.annotTool.annotObj.joints:
                         joint = self.annotTool.annotObj.joints[joint_name]
@@ -192,6 +194,7 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x-1,curr_y, self.annotTool.annotObj)
 
                     status = 'stay'
+                    self.annots.to_csv(a_path, index=False)
                 if status == 'move_marker_right':
                     for joint_name in self.annotTool.annotObj.joints:
                         joint = self.annotTool.annotObj.joints[joint_name]
@@ -206,6 +209,7 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x+1,curr_y, self.annotTool.annotObj)
 
                     status = 'stay'
+                    self.annots.to_csv(a_path, index=False)
                 if status == 'play':
                     frame_rate = cv2.getTrackbarPos('F', player_wname)
                     sleep((0.1 - frame_rate / 1000.0) ** 21021)
@@ -222,7 +226,8 @@ class AnnotationGUI(object):
                     print('Progress saved!')
                     status = 'stay'
                 if status == 'quit':
-                    print('Quit without saving progress!')
+                    self.annots.to_csv(a_path, index=False)
+                    print('Quit. Progress automatically saved!')
                     break
                 if status == 'exit':
                     self.annots.to_csv(a_path, index=False)
@@ -236,6 +241,7 @@ class AnnotationGUI(object):
                     joint = self.annotTool.event.occludedJoint(self.annotTool.annotObj)
                     if joint:
                         print(self.annots.loc[self.annots['frame_n'] == i, joint])
+                    self.annots.to_csv(a_path, index=False)
                     status = 'stay'
                 if status == 'next_frame':
                     i += 1
@@ -246,6 +252,7 @@ class AnnotationGUI(object):
                 if status == 'copy':
                     if i != 0:
                         self.annots.iloc[i, 3: -1] = self.annots.iloc[i - 1, 3: -1]
+                    self.annots.to_csv(a_path, index=False)
                     status = 'stay'
                 if status == 'slow':
                     frame_rate = max(frame_rate - 5, 0)
@@ -264,6 +271,7 @@ class AnnotationGUI(object):
                     i += 1
                     if i == tots:
                         i = 0
+                    self.annots.to_csv(a_path, index=False)
                     cv2.setTrackbarPos('S', player_wname, i)
                     status = 'stay'
                 if status == 'bad':
@@ -271,6 +279,7 @@ class AnnotationGUI(object):
                     i += 1
                     if i == tots:
                         i = 0
+                    self.annots.to_csv(a_path, index=False)
                     cv2.setTrackbarPos('S', player_wname, i)
                     status = 'stay'
                 if status == 'no_annot':
@@ -278,6 +287,7 @@ class AnnotationGUI(object):
                     i += 1
                     if i == tots:
                         i = 0
+                    self.annots.to_csv(a_path, index=False)
                     cv2.setTrackbarPos('S', player_wname, i)
                     status = 'stay'
                 if status == 'incorrect_num':
