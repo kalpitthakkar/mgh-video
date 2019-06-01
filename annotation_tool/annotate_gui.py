@@ -90,7 +90,7 @@ class AnnotationGUI(object):
             cv2.putText(self.color_map, this_joint, (x[i], y), cv2.FONT_HERSHEY_SIMPLEX, 1, this_color, 2)
             i += 1
 
-        tots = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        tots = len(self.annots.index)
         cv2.createTrackbar('S', player_wname, 0, int(tots) - 1, flick)
         cv2.setTrackbarPos('S', player_wname, 0)
         cv2.createTrackbar('F', player_wname, 1, 100, flick)
@@ -106,7 +106,7 @@ class AnnotationGUI(object):
         control_wname = 'Controls'
         color_wname = 'Color mappings'
         
-        tots = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        tots = len(self.annots.index)
         i = 0
         status = 'stay'
         while True:
@@ -117,10 +117,9 @@ class AnnotationGUI(object):
             try:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, i)
                 ret, im = self.cap.read()
-                if im is None:
+                if i == tots:
                     i = 0
                     status = 'stay'
-                    continue
                 r = playerwidth / im.shape[1]
                 dim = (int(playerwidth), int(im.shape[0] * r))
                 im = cv2.resize(im, dim, interpolation=cv2.INTER_AREA)
@@ -164,7 +163,8 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y-1, self.annotTool.annotObj)
 
                     status = 'stay'
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                 if status == 'move_marker_down':
                     for joint_name in self.annotTool.annotObj.joints:
                         joint = self.annotTool.annotObj.joints[joint_name]
@@ -179,7 +179,8 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y+1, self.annotTool.annotObj)
 
                     status = 'stay'
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                 if status == 'move_marker_left':
                     for joint_name in self.annotTool.annotObj.joints:
                         joint = self.annotTool.annotObj.joints[joint_name]
@@ -194,7 +195,8 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x-1,curr_y, self.annotTool.annotObj)
 
                     status = 'stay'
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                 if status == 'move_marker_right':
                     for joint_name in self.annotTool.annotObj.joints:
                         joint = self.annotTool.annotObj.joints[joint_name]
@@ -209,7 +211,8 @@ class AnnotationGUI(object):
                         self.annotTool.event.trigger('releaseMouseButton')(curr_x+1,curr_y, self.annotTool.annotObj)
 
                     status = 'stay'
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                 if status == 'play':
                     frame_rate = cv2.getTrackbarPos('F', player_wname)
                     sleep((0.1 - frame_rate / 1000.0) ** 21021)
@@ -252,7 +255,8 @@ class AnnotationGUI(object):
                 if status == 'copy':
                     if i != 0:
                         self.annots.iloc[i, 3: -1] = self.annots.iloc[i - 1, 3: -1]
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                     status = 'stay'
                 if status == 'slow':
                     frame_rate = max(frame_rate - 5, 0)
@@ -271,7 +275,8 @@ class AnnotationGUI(object):
                     i += 1
                     if i == tots:
                         i = 0
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                     cv2.setTrackbarPos('S', player_wname, i)
                     status = 'stay'
                 if status == 'bad':
@@ -279,7 +284,8 @@ class AnnotationGUI(object):
                     i += 1
                     if i == tots:
                         i = 0
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                     cv2.setTrackbarPos('S', player_wname, i)
                     status = 'stay'
                 if status == 'no_annot':
@@ -287,7 +293,8 @@ class AnnotationGUI(object):
                     i += 1
                     if i == tots:
                         i = 0
-                    self.annots.to_csv(a_path, index=False)
+                    if i % 10 == 0:
+                        self.annots.to_csv(a_path, index=False)
                     cv2.setTrackbarPos('S', player_wname, i)
                     status = 'stay'
                 if status == 'incorrect_num':
