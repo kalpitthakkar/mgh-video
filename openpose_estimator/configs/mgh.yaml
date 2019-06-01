@@ -1,0 +1,13 @@
+estimate_pose:
+    data_dir: "/media/kalpitthakkar/My\ Book/pose_bootstrap_shortlist"
+    data_ext: "avi"
+    resolution: "432x368"
+    model_name: "mobilenet_thin"
+    column_names: ["sub_n", "video_name", "frame_n", "nose", "r_shoulder", "r_elbow", "r_wrist", "l_shoulder", "l_elbow", "l_wrist", "quality"]
+
+draw_pose:
+    data_dir: "/media/kalpitthakkar/My\ Book/pose_bootstrap_shortlist"
+    data_ext: "avi"
+    resolution: "432x368"
+    model_name: "mobilenet_thin"
+    column_names: ["sub_n", "video_name", "frame_n", "nose", "r_shoulder", "r_elbow", "r_wrist", "l_shoulder", "l_elbow", "l_wrist", "quality"]
