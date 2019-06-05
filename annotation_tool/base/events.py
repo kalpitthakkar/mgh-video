@@ -23,6 +23,7 @@ class EventHandler(object):
         annotObj.frame_n = frame_n
         for joint in annot_df:
             annotObj.joints[joint].x_center, annotObj.joints[joint].y_center, _score = annot_df[joint].values[0].split('-')
+            #print(annot_df[joint].values[0].split('-'))
 
         self.clear_canvas_draw(annotObj)
 

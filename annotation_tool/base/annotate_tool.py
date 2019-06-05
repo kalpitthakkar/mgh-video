@@ -64,9 +64,9 @@ class AnnotationTool(object):
         self.multiframe = int(self.config['multiframe'])
 
     def get_data(self):
-        vpaths = glob.glob(os.path.join(self.data_dir, '*.' + self.data_ext))
+        vpaths = sorted(glob.glob(os.path.join(self.data_dir, '*.' + self.data_ext)))
         if self.with_annots:
-            apaths = glob.glob(os.path.join(self.data_dir, '*.' + self.annots_file_ext))
+            apaths = sorted(glob.glob(os.path.join(self.data_dir, '*.' + self.annots_file_ext)))
             return vpaths, apaths
         return vpaths
 
