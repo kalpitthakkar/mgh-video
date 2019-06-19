@@ -36,16 +36,19 @@ class AnnotationGUI(object):
         w = evt.widget
         index = int(w.curselection()[0])
         data = self.annotTool.data_paths[index]
-        print('You selected item %d: "%s"' % (index, data))
         if self.annotTool.current_mode == 'VID_ANNOT':
             annot = self.annotTool.annot_paths[index]
+            print('You selected item %d: "%s => %s"' % (index, data, annot))
             self.show_video_with_annots(data, annot)
         elif self.annotTool.current_mode == 'VID_ANNOT_SCRATCH':
+            print('You selected item %d: "%s => No annot"' % (index, data))
             self.show_video_scratch(data)
         elif self.annotTool.current_mode == 'SEQ_ANNOT':
             annot = self.annotTool.annot_paths[index]
+            print('You selected item %d: "%s => %s"' % (index, data, annot))
             self.show_image_sequence_with_annots(data, annot)
         elif self.annotTool.current_mode == 'SEQ_ANNOT_SCRATCH':
+            print('You selected item %d: "%s => No annot"' % (index, data))
             self.show_image_sequence_scratch(data)
 
     def cv2WindowInit(self, v_path, a_path):
