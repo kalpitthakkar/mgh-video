@@ -1,0 +1,20 @@
+data_dir: /media/data_cifs/KSU_mice/tf_records/train_directory
+output_dir: /media/data_cifs/KSU_mice/clickme_annots
+parts: 'attention_loc'
+attention_radius: 6
+multiframe: 0
+samples_to_annotate: 10000
+controls:
+    'a': "prev"
+    'd': "next"
+    'w': "play"
+    's': "stop\n"
+    'q': "copy"
+    'z': "save"
+    'Esc': "Save and Quit\n"
+    'c': "Quit without saving"
+    'x': "Show # incorrect\n"
+    'i': "Move marker up"
+    'm': "Move marker down\n"
+    'j': "Move marker left"
+    'l': "Move marker right"

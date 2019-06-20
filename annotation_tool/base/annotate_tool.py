@@ -19,14 +19,12 @@ from .annotations import Annotation
 from .events import EventHandler
 
 class AnnotationTool(object):
-    def __init__(self, data_dir, data_type,
-            data_ext, with_annots,
-            annots_file_ext, output_dir,
-            yaml_config):
+    def __init__(self, data, data_type,
+            with_annots, annots_file_ext,
+            output_dir, yaml_config):
         
-        self.data_dir = data_dir
+        self.data = data
         self.data_type = data_type
-        self.data_ext = data_ext
         self.annots_file_ext = annots_file_ext
         self.output_dir = output_dir
         self.with_annots = with_annots
@@ -46,11 +44,6 @@ class AnnotationTool(object):
             else:
                 self.current_mode = self.modes[2]
 
-        if self.with_annots:
-            self.data_paths, self.annot_paths = self.get_data()
-        else:
-            self.data_paths = self.get_data()
-
         with open(yaml_config, 'r') as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -59,22 +52,14 @@ class AnnotationTool(object):
             self.controls_text += ("%s: %s," % (k, v))
         self.controls_text = self.controls_text[:-1]
 
-        self.joints = [x.strip() for x  in self.config['joint_names'].split(',')]
-        self.joint_radius = int(self.config['joint_radius'])
-        self.multiframe = int(self.config['multiframe'])
+        self.parts = [x.strip() for x  in self.config['parts'].split(',')]
+        self.attention_radius = int(self.config['attention_radius'])
 
-    def get_data(self):
-        vpaths = sorted(glob.glob(os.path.join(self.data_dir, '*.' + self.data_ext)))
-        if self.with_annots:
-            apaths = sorted(glob.glob(os.path.join(self.data_dir, '*.' + self.annots_file_ext)))
-            return vpaths, apaths
-        return vpaths
-
-    def initAnnotations(self, joints, radius, annots, player_wname, playerwidth,
-            playerheight, colorDict, multiframe):
+    def initAnnotations(self, parts, radius, annots, player_wname, playerwidth,
+            playerheight, colorDict):
        
         self.annotObj.wname = player_wname
-        self.annotObj.joints_df = annots
+        self.annotObj.parts_df = annots
 
         self.annotObj.keepWithin.x = 0
         self.annotObj.keepWithin.y = 0
@@ -82,13 +67,12 @@ class AnnotationTool(object):
         self.annotObj.keepWithin.height = playerheight
 
         self.annotObj.colorDict = colorDict
-        self.annotObj.multiframe = multiframe
     
-        for jt in joints:
-            self.annotObj(jt)
-            self.annotObj.joints[jt].x_center = 0
-            self.annotObj.joints[jt].y_center = 0
-            self.annotObj.joints[jt].radius = radius
+        for p in parts:
+            self.annotObj(p)
+            self.annotObj.parts[p].x_center = 0
+            self.annotObj.parts[p].y_center = 0
+            self.annotObj.parts[p].radius = radius
             self.annotObj.active = True
         
     def dragCircle(self, event, x, y, flags, annotObj):
@@ -96,7 +80,5 @@ class AnnotationTool(object):
             self.event.trigger('pressMouseButton')(x, y, annotObj)
         if event == cv2.EVENT_LBUTTONUP:
             self.event.trigger('releaseMouseButton')(x, y, annotObj)
-        if event == cv2.EVENT_MOUSEMOVE:
-            self.event.trigger('moveMousePointer')(x, y, annotObj)
         if event == cv2.EVENT_LBUTTONDBLCLK:
             self.event.trigger('mouseDoubleClick')(x, y, annotObj)

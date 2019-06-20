@@ -1,24 +1,19 @@
-import numpy as np
-import json
-
 from .shapes import Rectangle, Circle
 
 class Annotation(object):
     # Limits of the canvas
     keepWithin = Rectangle()
 
-    selectedJoint = None
-    size_marker = 2
+    selectedPart = None
+    size_marker = 3
     initialized = False
-    joints = {}
+    parts = {}
     image = None
 
     wname = ""
-    multiframe = 0
-    returnflag = False
     frame_n = 0
-    joints_df = []
+    parts_df = []
     colorDict = {}
 
     def __init__(self, label):
-        self.joints[label] = Circle(label=label)
+        self.parts[label] = Circle(label=label)

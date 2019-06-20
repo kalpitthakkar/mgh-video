@@ -6,51 +6,53 @@ import numpy as np
 from time import sleep
 
 import pandas as pd
-import yaml
 
 from tkinter import *
 from tkinter import ttk
 import os
-import glob
 from configparser import ConfigParser
 
 from base import Annotation, AnnotationTool, Rectangle, Circle, EventHandler
+
+import matplotlib.pyplot as plt
 
 def flick(x):
     pass
 
 class AnnotationGUI(object):
-    def __init__(self, data_dir, output_dir,
-            data_type='Video', data_ext='avi',
-            with_annots=True, annots_file_ext='csv',
-            yaml_config='mgh.yaml'):
-       
+    def __init__(self, data, output_dir,
+            data_type='Video', with_annots=True, annots_file_ext='csv',
+            yaml_config='ksu_mice.yaml'):
+
+        self.left_annots = None
+        self.right_annots = None
         self.annotTool = AnnotationTool(
-            data_dir, data_type, data_ext,
-            with_annots, annots_file_ext, output_dir,
-            yaml_config
+            data, data_type, with_annots, annots_file_ext,
+            output_dir, yaml_config
         )
         
     def onselect(self, evt):
         # Note here that Tkinter passes an event object to onselect()
         w = evt.widget
+        data = self.annotTool.data
         index = int(w.curselection()[0])
-        data = self.annotTool.data_paths[index]
-        print('You selected item %d: "%s"' % (index, data))
-        if self.annotTool.current_mode == 'VID_ANNOT':
-            annot = self.annotTool.annot_paths[index]
-            self.show_video_with_annots(data, annot)
-        elif self.annotTool.current_mode == 'VID_ANNOT_SCRATCH':
-            self.show_video_scratch(data)
-        elif self.annotTool.current_mode == 'SEQ_ANNOT':
-            annot = self.annotTool.annot_paths[index]
-            self.show_image_sequence_with_annots(data, annot)
-        elif self.annotTool.current_mode == 'SEQ_ANNOT_SCRATCH':
-            self.show_image_sequence_scratch(data)
+        if index == 0:
+            chunk = 'left'
+            v_data = np.squeeze(data[0])
+            print(v_data.shape)
+        else:
+            chunk = 'right'
+            v_data = np.squeeze(data[1])
+            print(v_data.shape)
+        self.show_video_with_annots(v_data, data[2], data[3], data[4], chunk)
+    
+    def cv2WindowInit(self, v_data, vname, frame, chunk='Left', bb_path=None):
+        vname = str(vname[0].decode("utf-8"))
+        self.save_path_prefix = os.path.join(self.annotTool.output_dir, vname)
+        if not os.path.exists(self.save_path_prefix):
+            os.makedirs(self.save_path_prefix)
 
-    def cv2WindowInit(self, v_path, a_path):
-        basepath = os.path.split(v_path)
-        player_wname = basepath[1][:-4]
+        player_wname = 'Data chunk - ' + chunk
         control_wname = 'Controls'
         color_wname = 'Color mappings'
         
@@ -62,17 +64,31 @@ class AnnotationGUI(object):
         cv2.namedWindow(color_wname)
         cv2.moveWindow(color_wname, 400, 190)
 
-        self.cap = cv2.VideoCapture(v_path)
-        playerwidth = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        playerheight = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        self.annots = pd.read_csv(a_path)
-        colorList = [[0, 0, 255], [0, 255, 170], [0, 170, 255], [0, 255, 0], [255, 0, 170], [255, 255, 0], [255, 0, 0]]
-        colorDict = dict(zip(self.annotTool.joints, colorList))
+        playerwidth = v_data[0].shape[0]
+        playerheight = v_data[0].shape[1]
+        if bb_path:
+            self.annots = pd.read_csv(bb_path)
+        elif os.path.exists(os.path.join(self.save_path_prefix, 'annots_'+chunk.lower()+'.csv')):
+            self.annots = pd.read_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk.lower()+'.csv')) 
+        else:
+            columns = ['video_path', 'frame_n']
+            for p in self.annotTool.parts:
+                columns.append(p)       # For each part, the annotation should be x-y
+            df_dict = {k: [] for k in columns}
+            num_frames = v_data.shape[0]
+            for i in range(num_frames):
+                df_dict['video_path'].append(vname)
+                df_dict['frame_n'].append(i)
+                for p in self.annotTool.parts:
+                    df_dict[p].append("0-0")
+            self.annots = pd.DataFrame.from_dict(df_dict)
+        colorList = [[0, 0, 255]]
+        colorDict = dict(zip(self.annotTool.parts, colorList))
 
-        self.annotTool.initAnnotations(self.annotTool.joints, self.annotTool.joint_radius, self.annots,
-                player_wname, playerwidth, playerheight, colorDict, self.annotTool.multiframe)
+        self.annotTool.initAnnotations(self.annotTool.parts, self.annotTool.attention_radius, self.annots,
+                player_wname, playerwidth, playerheight, colorDict)
         cv2.setMouseCallback(player_wname, self.annotTool.dragCircle, self.annotTool.annotObj)
-        self.controls = np.zeros((90, int(playerwidth * 2)), np.uint8)
+        self.controls = np.zeros((140, int(playerwidth * 2)), np.uint8)
         y0, dy = 20, 25
         for i, line in enumerate(self.annotTool.controls_text.split('\n')):
             y = y0 + i * dy
@@ -84,7 +100,7 @@ class AnnotationGUI(object):
         x = [0, 85, 270, 400, 510, 680, 800]
         self.color_map = np.zeros((40, int(playerwidth * 2), 3), np.uint8)
         self.color_map[:, :] = 255
-        for this_joint in self.annotTool.joints:
+        for this_joint in self.annotTool.parts:
             this_color = colorDict[this_joint]
             this_color = tuple(this_color)
             cv2.putText(self.color_map, this_joint, (x[i], y), cv2.FONT_HERSHEY_SIMPLEX, 1, this_color, 2)
@@ -93,20 +109,21 @@ class AnnotationGUI(object):
         tots = len(self.annots.index)
         cv2.createTrackbar('S', player_wname, 0, int(tots) - 1, flick)
         cv2.setTrackbarPos('S', player_wname, 0)
-        cv2.createTrackbar('F', player_wname, 1, 100, flick)
-        frame_rate = int(self.cap.get(cv2.CAP_PROP_FPS))
-        if frame_rate is None:
-            frame_rate = 30
+        cv2.createTrackbar('F', player_wname, 1, 10, flick)
+        frame_rate = 1
         cv2.setTrackbarPos('F', player_wname, frame_rate)
         
-    def show_video_with_annots(self, v_path, a_path):
-        self.cv2WindowInit(v_path, a_path)
-        basepath = os.path.split(v_path)
-        player_wname = basepath[1][:-4]
+    def show_video_with_annots(self, v_data, label, vname, frame, chunk):
+        if chunk == 'left':
+            self.cv2WindowInit(v_data, vname, frame, 'Left')
+            player_wname = 'Data chunk - Left'
+        else:
+            self.cv2WindowInit(v_data, vname, frame, 'Right')
+            player_wname = 'Data chunk - Right'
         control_wname = 'Controls'
         color_wname = 'Color mappings'
         
-        tots = len(self.annots.index)
+        tots = v_data.shape[0]
         i = 0
         status = 'stay'
         while True:
@@ -114,199 +131,158 @@ class AnnotationGUI(object):
             playerheight = self.annotTool.annotObj.keepWithin.height
             cv2.imshow(control_wname, self.controls)
             cv2.imshow(color_wname, self.color_map)
-            try:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-                ret, im = self.cap.read()
+            im = np.squeeze(v_data[i])
+            if i == tots:
+                i = 0
+                status = 'stay'
+            r = playerwidth / im.shape[1]
+            dim = (int(playerwidth), int(im.shape[0] * r))
+            im = cv2.resize(im, dim, interpolation=cv2.INTER_AREA)
+
+            cv2.imshow(player_wname, im)
+            self.annotTool.event.updateAnnots(self.annotTool.annotObj, i, im)
+
+            key = cv2.waitKey(10)
+            status = {ord('s'): 'stay', ord('S'): 'stay',
+                      ord('w'): 'play', ord('W'): 'play',
+                      ord('a'): 'prev_frame', ord('A'): 'prev_frame',
+                      ord('d'): 'next_frame', ord('D'): 'next_frame',
+                      ord('q'): 'copy', ord('Q'): 'copy',
+                      ord('z'): 'save', ord('Z'): 'save',
+                      ord('c'): 'quit',
+                      ord('x'): 'incorrect_num',
+                      ord('i'): 'move_marker_up',
+                      ord('m'): 'move_marker_down',
+                      ord('j'): 'move_marker_left',
+                      ord('l'): 'move_marker_right',
+                      255: status,
+                      -1: status,
+                      27: 'exit'}[key]
+
+            if status == 'move_marker_up':
+                for joint_name in self.annotTool.annotObj.parts:
+                    joint = self.annotTool.annotObj.parts[joint_name]
+                    if joint.focus:
+                        self.annotTool.annotObj.selectedPart = joint
+
+                if self.annotTool.annotObj.selectedPart:
+                    joint = self.annotTool.annotObj.selectedPart
+                    curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                    self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('keyboardMoveMarker')(curr_x, curr_y-1, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y-1, self.annotTool.annotObj)
+
+                status = 'stay'
+                if i % 10 == 0:
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+            if status == 'move_marker_down':
+                for joint_name in self.annotTool.annotObj.parts:
+                    joint = self.annotTool.annotObj.parts[joint_name]
+                    if joint.focus:
+                        self.annotTool.annotObj.selectedPart = joint
+
+                if self.annotTool.annotObj.selectedPart:
+                    joint = self.annotTool.annotObj.selectedPart
+                    curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                    self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('keyboardMoveMarker')(curr_x, curr_y+1, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y+1, self.annotTool.annotObj)
+
+                status = 'stay'
+                if i % 10 == 0:
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+            if status == 'move_marker_left':
+                for joint_name in self.annotTool.annotObj.parts:
+                    joint = self.annotTool.annotObj.parts[joint_name]
+                    if joint.focus:
+                        self.annotTool.annotObj.selectedPart = joint
+
+                if self.annotTool.annotObj.selectedPart:
+                    joint = self.annotTool.annotObj.selectedPart
+                    curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                    self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('keyboardMoveMarker')(curr_x-1, curr_y, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('releaseMouseButton')(curr_x-1,curr_y, self.annotTool.annotObj)
+
+                status = 'stay'
+                if i % 10 == 0:
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+            if status == 'move_marker_right':
+                for joint_name in self.annotTool.annotObj.parts:
+                    joint = self.annotTool.annotObj.parts[joint_name]
+                    if joint.focus:
+                        self.annotTool.annotObj.selectedPart = joint
+
+                if self.annotTool.annotObj.selectedPart:
+                    joint = self.annotTool.annotObj.selectedPart
+                    curr_x, curr_y = int(joint.x_center), int(joint.y_center)
+                    self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('keyboardMoveMarker')(curr_x+1, curr_y, self.annotTool.annotObj)
+                    self.annotTool.event.trigger('releaseMouseButton')(curr_x+1,curr_y, self.annotTool.annotObj)
+
+                status = 'stay'
+                if i % 10 == 0:
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+            if status == 'play':
+                frame_rate = cv2.getTrackbarPos('F', player_wname)
+                sleep((0.1 - frame_rate / 1000.0) ** 21021)
+                i += 1
+
                 if i == tots:
                     i = 0
-                    status = 'stay'
-                r = playerwidth / im.shape[1]
-                dim = (int(playerwidth), int(im.shape[0] * r))
-                im = cv2.resize(im, dim, interpolation=cv2.INTER_AREA)
-
-                cv2.imshow(player_wname, im)
-                self.annotTool.event.updateAnnots(self.annotTool.annotObj, i, im)
-
-                key = cv2.waitKey(10)
-                status = {ord('s'): 'stay', ord('S'): 'stay',
-                          ord('w'): 'play', ord('W'): 'play',
-                          ord('a'): 'prev_frame', ord('A'): 'prev_frame',
-                          ord('d'): 'next_frame', ord('D'): 'next_frame',
-                          ord('q'): 'copy', ord('Q'): 'copy',
-                          ord('o'): 'occluded', ord('O'): 'occluded',
-                          ord('z'): 'save', ord('Z'): 'save',
-                          ord('c'): 'quit',
-                          ord('0'): 'no_annot',
-                          ord('x'): 'incorrect_num',
-                          ord('='): 'good',
-                          ord('-'): 'bad',
-                          # Keycodes for these obtained from online sources
-                          ord('i'): 'move_marker_up',
-                          ord('m'): 'move_marker_down',
-                          ord('j'): 'move_marker_left',
-                          ord('l'): 'move_marker_right',
-                          255: status,
-                          -1: status,
-                          27: 'exit'}[key]
-
-                if status == 'move_marker_up':
-                    for joint_name in self.annotTool.annotObj.joints:
-                        joint = self.annotTool.annotObj.joints[joint_name]
-                        if joint.focus:
-                            self.annotTool.annotObj.selectedJoint = joint
-
-                    if self.annotTool.annotObj.selectedJoint:
-                        joint = self.annotTool.annotObj.selectedJoint
-                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
-                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x, curr_y-1, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y-1, self.annotTool.annotObj)
-
-                    status = 'stay'
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                if status == 'move_marker_down':
-                    for joint_name in self.annotTool.annotObj.joints:
-                        joint = self.annotTool.annotObj.joints[joint_name]
-                        if joint.focus:
-                            self.annotTool.annotObj.selectedJoint = joint
-
-                    if self.annotTool.annotObj.selectedJoint:
-                        joint = self.annotTool.annotObj.selectedJoint
-                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
-                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x, curr_y+1, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('releaseMouseButton')(curr_x,curr_y+1, self.annotTool.annotObj)
-
-                    status = 'stay'
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                if status == 'move_marker_left':
-                    for joint_name in self.annotTool.annotObj.joints:
-                        joint = self.annotTool.annotObj.joints[joint_name]
-                        if joint.focus:
-                            self.annotTool.annotObj.selectedJoint = joint
-
-                    if self.annotTool.annotObj.selectedJoint:
-                        joint = self.annotTool.annotObj.selectedJoint
-                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
-                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x-1, curr_y, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('releaseMouseButton')(curr_x-1,curr_y, self.annotTool.annotObj)
-
-                    status = 'stay'
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                if status == 'move_marker_right':
-                    for joint_name in self.annotTool.annotObj.joints:
-                        joint = self.annotTool.annotObj.joints[joint_name]
-                        if joint.focus:
-                            self.annotTool.annotObj.selectedJoint = joint
-
-                    if self.annotTool.annotObj.selectedJoint:
-                        joint = self.annotTool.annotObj.selectedJoint
-                        curr_x, curr_y = int(joint.x_center), int(joint.y_center)
-                        self.annotTool.event.trigger('pressMouseButton')(curr_x, curr_y, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('keyboardMoveMarker')(curr_x+1, curr_y, self.annotTool.annotObj)
-                        self.annotTool.event.trigger('releaseMouseButton')(curr_x+1,curr_y, self.annotTool.annotObj)
-
-                    status = 'stay'
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                if status == 'play':
-                    frame_rate = cv2.getTrackbarPos('F', player_wname)
-                    sleep((0.1 - frame_rate / 1000.0) ** 21021)
-                    i += 1
-
-                    if i == tots:
-                        i = 0
-                    cv2.setTrackbarPos('S', player_wname, i)
-                    continue
-                if status == 'stay':
-                    i = cv2.getTrackbarPos('S', player_wname)
-                if status == 'save':
-                    self.annots.to_csv(a_path, index=False)
-                    print('Progress saved!')
-                    status = 'stay'
-                if status == 'quit':
-                    self.annots.to_csv(a_path, index=False)
-                    print('Quit. Progress automatically saved!')
-                    break
-                if status == 'exit':
-                    self.annots.to_csv(a_path, index=False)
-                    print('Save & Quit!')
-                    break
-                if status == 'prev_frame':
-                    i -= 1
-                    cv2.setTrackbarPos('S', player_wname, i)
-                    status = 'stay'
-                if status == 'occluded':
-                    joint = self.annotTool.event.occludedJoint(self.annotTool.annotObj)
-                    if joint:
-                        print(self.annots.loc[self.annots['frame_n'] == i, joint])
-                    self.annots.to_csv(a_path, index=False)
-                    status = 'stay'
-                if status == 'next_frame':
-                    i += 1
-                    if i == tots:
-                        i = 0
-                    cv2.setTrackbarPos('S', player_wname, i)
-                    status = 'stay'
-                if status == 'copy':
-                    if i != 0:
-                        self.annots.iloc[i, 3: -1] = self.annots.iloc[i - 1, 3: -1]
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                    status = 'stay'
-                if status == 'slow':
-                    frame_rate = max(frame_rate - 5, 0)
-                    cv2.setTrackbarPos('F', player_wname, frame_rate)
-                    status = 'play'
-                if status == 'fast':
-                    frame_rate = min(100, frame_rate + 5)
-                    cv2.setTrackbarPos('F', player_wname, frame_rate)
-                    status = 'play'
-                if status == 'snap':
-                    cv2.imwrite("./" + "Snap_" + str(i) + ".jpg", im)
-                    print("Snap of Frame", i, "Taken!")
-                    status = 'stay'
-                if status == 'good':
-                    self.annots.loc[self.annots['frame_n'] == i, 'quality'] = 1
-                    i += 1
-                    if i == tots:
-                        i = 0
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                    cv2.setTrackbarPos('S', player_wname, i)
-                    status = 'stay'
-                if status == 'bad':
-                    self.annots.loc[self.annots['frame_n'] == i, 'quality'] = -1
-                    i += 1
-                    if i == tots:
-                        i = 0
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                    cv2.setTrackbarPos('S', player_wname, i)
-                    status = 'stay'
-                if status == 'no_annot':
-                    self.annots.loc[self.annots['frame_n'] == i, 'quality'] = 0
-                    i += 1
-                    if i == tots:
-                        i = 0
-                    if i % 10 == 0:
-                        self.annots.to_csv(a_path, index=False)
-                    cv2.setTrackbarPos('S', player_wname, i)
-                    status = 'stay'
-                if status == 'incorrect_num':
-                    # TODO: Add this function
-                    # debug_list = self.annotTool.event.debug(self.annots)
-                    # print('num_incorrect:' + str(len(debug_list)))
-                    status = 'stay'
-            except KeyError:
-                print("Invalid Key was pressed")
-            except ValueError:
-                print("Don't try going out of the box!")
+                cv2.setTrackbarPos('S', player_wname, i)
+                continue
+            if status == 'stay':
+                i = cv2.getTrackbarPos('S', player_wname)
+            if status == 'save':
+                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                print('Progress saved!')
+                if chunk == 'left':
+                    self.left_annots = self.annots
+                else:
+                    self.right_annots = self.annots
+                status = 'stay'
+            if status == 'quit':
+                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                print('Quit. Progress automatically saved!')
                 break
+            if status == 'exit':
+                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                print('Save & Quit!')
+                break
+            if status == 'prev_frame':
+                i -= 1
+                cv2.setTrackbarPos('S', player_wname, i)
+                status = 'stay'
+            if status == 'next_frame':
+                i += 1
+                if i == tots:
+                    i = 0
+                cv2.setTrackbarPos('S', player_wname, i)
+                status = 'stay'
+            if status == 'copy':
+                if i != 0:
+                    self.annots.iloc[i, -1] = self.annots.iloc[i - 1, -1]
+                if i % 10 == 0:
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                status = 'stay'
+            if status == 'slow':
+                frame_rate = max(frame_rate - 5, 0)
+                cv2.setTrackbarPos('F', player_wname, frame_rate)
+                status = 'play'
+            if status == 'fast':
+                frame_rate = min(100, frame_rate + 5)
+                cv2.setTrackbarPos('F', player_wname, frame_rate)
+                status = 'play'
+            if status == 'snap':
+                cv2.imwrite("./" + "Snap_" + str(i) + ".jpg", im)
+                print("Snap of Frame", i, "Taken!")
+                status = 'stay'
+            if status == 'incorrect_num':
+                # TODO: Add this function
+                # debug_list = self.annotTool.event.debug(self.annots)
+                # print('num_incorrect:' + str(len(debug_list)))
+                status = 'stay'
 
         cv2.destroyWindow(player_wname)
         cv2.destroyWindow(control_wname)
@@ -324,8 +300,8 @@ class AnnotationGUI(object):
         root.grid_rowconfigure(0, weight=1)
         root.geometry('350x500+50+50')
         root.title('Select Video')
-        for filename in self.annotTool.data_paths:
-            l.insert(END, os.path.basename(filename))
+        l.insert(END, 'Left Chunk')
+        l.insert(END, 'Right Chunk')
 
         l.bind('<<ListboxSelect>>', self.onselect)
         return root
