@@ -245,6 +245,10 @@ class AnnotationGUI(object):
             if status == 'quit':
                 self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
                 print('Quit. Progress automatically saved!')
+                if chunk == 'left':
+                    self.left_annots = self.annots
+                else:
+                    self.right_annots = self.annots
                 break
             if status == 'exit':
                 self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
