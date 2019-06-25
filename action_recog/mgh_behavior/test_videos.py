@@ -16,18 +16,14 @@ from central_reservoir.augmentations import preprocessing_volume
 from absl import flags
 from absl import app
 
-path_to_pickle = '/home/rohitsaha/Human_video_frame_labels.pkl'
-with open(path_to_pickle, 'rb') as handle:
-    videoname_frame = pickle.load(handle)
-
 # Get test shards from bucket
-test_shards_path = 'gs://serrelab/behavior_core_mice/TF_records/Human/2019-03-08_tanner_nih_annotated/'
+test_shards_path = '/media/data_cifs/Kalpit/MGH/mgh_test_directory'
 shards = tf.gfile.Glob(
     os.path.join(
         test_shards_path,
-        'test*'))
+        'mgh_test*'))
 print('{} testing shards found'.format(len(shards)))
-test_examples = 18500
+test_examples = 2000
 batch_size = 20
 print('Testing examples: {}'.format(test_examples))
 
@@ -35,7 +31,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     'model_folder_name',
-    default='tanner_nih_4.5k_on_v2_256_crbn_4096batch_1000epochs_1iters_adam_1e-5lr',
+    default='v1_annots_v3-8_b256_15classes_adamlre-3_i3d',
     help='To mention the model path')
 
 flags.DEFINE_integer(
@@ -44,27 +40,41 @@ flags.DEFINE_integer(
     help='To specify the checkpoint')
 
 
-BEHAVIOR_INDICES = {
-    0:"drink",
-    1:"eat",
-    2:"groom",
-    3:"hang",
-    4:"sniff",
-    5:"rear",
-    6:"rest",
-    7:"walk",
-    8:"eathand"}
+BEHAVIORS_INDICES = {
+    0: 'adjust_items_body_L',
+    1: 'adjust_items_body_R',
+    2: 'adjust_items_face_or_head_L',
+    3: 'adjust_items_face_or_head_R',
+    4: 'background',
+    5: 'finemanipulate_object',
+    6: 'grasp_and_move_L',
+    7: 'grasp_and_move_R',
+    8: 'reach_face_or_head_L',
+    9: 'reach_face_or_head_R',
+    10: 'reach_nearobject_L',
+    11: 'reach_nearobject_R',
+    12: 'rest',
+    13: 'withdraw_reach_gesture_L',
+    14: 'withdraw_reach_gesture_R'
+}
 
 behaviors = [
-    'drink',
-    'eat',
-    'groom',
-    'hang',
-    'sniff',
-    'rear',
+    'adjust_items_body_L',
+    'adjust_items_body_R',
+    'adjust_items_face_or_head_L',
+    'adjust_items_face_or_head_R',
+    'background',
+    'finemanipulate_object',
+    'grasp_and_move_L',
+    'grasp_and_move_R',
+    'reach_face_or_head_L',
+    'reach_face_or_head_R',
+    'reach_nearobject_L',
+    'reach_nearobject_R',
     'rest',
-    'walk',
-    'eathand']
+    'withdraw_reach_gesture_L',
+    'withdraw_reach_gesture_R'
+]
 
 slack_window = 20
 each_side = slack_window / 2
@@ -74,7 +84,7 @@ def read_pickle(fi):
         a = pickle.load(handle)
     return a
 
-def temporal(fnames, fnumbers, top_class_batch, labels_batch):
+def temporal(fnames, sframes, eframes, top_class_batch, labels_batch):
     temporal_top_class_batch = []
     for i in range(len(fnames)):
         all_frames = videoname_frame[fnames[i]]
@@ -175,7 +185,10 @@ def read_and_decode(filename_queue):
         'data/video_name': tf.FixedLenFeature(
             [],
             tf.string),
-        'data/frame_number': tf.FixedLenFeature(
+        'data/start_frame': tf.FixedLenFeature(
+            [],
+            tf.int64),
+        'data/end_frame': tf.FixedLenFeature(
             [],
             tf.int64)}
 
@@ -193,8 +206,12 @@ def read_and_decode(filename_queue):
 
     video_name = parsed['data/video_name']
 
-    frame_number = tf.cast(
-        parsed['data/frame_number'],
+    start_frame = tf.cast(
+        parsed['data/start_frame'],
+        tf.int32)
+
+    end_frame = tf.cast(
+        parsed['data/end_frame'],
         tf.int32)
 
     height, width = 256, 256
@@ -209,18 +226,18 @@ def read_and_decode(filename_queue):
         use_bfloat16=False,
         list_of_augmentations=['random_crop'])
 
-    videos, labels, video_names, frame_numbers = tf.train.batch([video, label, video_name, frame_number],
+    videos, labels, video_names, sframes, eframes = tf.train.batch([video, label, video_name, start_frame, end_frame],
         batch_size=batch_size,
         capacity=30,
         num_threads=1)
 
-    return videos, labels, video_names, frame_numbers
+    return videos, labels, video_names, sframes, eframes
 
 def main(unused_argv):
 
     all_preds, all_ground, all_temporal_preds = [], [], []
 
-    common_path = 'gs://serrelab/behavior_core_mice/Model_runs/'
+    common_path = 'gs://serrelab/MGH/model_runs/'
     ckpt_path = os.path.join(
         common_path,
         FLAGS.model_folder_name,
@@ -234,14 +251,14 @@ def main(unused_argv):
         filename_queue = tf.train.string_input_producer(
             shards,
             num_epochs=None)
-        video, label, filename, frame_number = read_and_decode(filename_queue)
-        label = tf.one_hot(label, 9, dtype=tf.float32)
+        video, label, filename, sframes, eframes = read_and_decode(filename_queue)
+        label = tf.one_hot(label, 15, dtype=tf.float32)
 
         network = i3d.InceptionI3d(
             final_endpoint='Logits',
             use_batch_norm=True,
             use_cross_replica_batch_norm=True,
-            num_classes=9,
+            num_classes=15,
             spatial_squeeze=True,
             dropout_keep_prob=0.7)
 
@@ -262,20 +279,21 @@ def main(unused_argv):
 
         try:
             for i in range(int(test_examples/batch_size)):
-                preds, labs, fname, fnumber = sess.run(
-                    [logits, label, filename, frame_number])
+                preds, labs, fname, sframe, eframe = sess.run(
+                    [logits, label, filename, sframes, eframes])
                 preds_max = list(np.argmax(preds, axis=-1))
                 labs_max = list(np.argmax(labs, axis=-1))
                 all_preds += preds_max
                 all_ground += labs_max
 
-                temporal_top_class_batch = temporal(
-                    fname,
-                    fnumber,
-                    preds_max,
-                    labs_max)
+                #temporal_top_class_batch = temporal(
+                #    fname,
+                #    snumber,
+                #    enumber,
+                #    preds_max,
+                #    labs_max)
 
-                all_temporal_preds += temporal_top_class_batch
+                #all_temporal_preds += temporal_top_class_batch
 
                 if  ( ((i+1)*batch_size) % 50 == 0):
                     print('{}/{} completed'.format((i+1)*batch_size, test_examples))
@@ -289,38 +307,38 @@ def main(unused_argv):
 
     ground_behav = [BEHAVIOR_INDICES[i] for i in all_ground]
     preds_behav = [BEHAVIOR_INDICES[i] for i in all_preds]
-    temporal_preds_behav = [BEHAVIOR_INDICES[i] for i in all_temporal_preds]
+    #temporal_preds_behav = [BEHAVIOR_INDICES[i] for i in all_temporal_preds]
 
     with open('gt.pkl', 'wb') as handle:
         pickle.dump(ground_behav, handle)
     with open('preds.pkl', 'wb') as handle:
         pickle.dump(preds_behav, handle)
-    with open('temporal_preds.pkl', 'wb') as handle:
-        pickle.dump(temporal_preds_behav, handle)
+    #with open('temporal_preds.pkl', 'wb') as handle:
+    #    pickle.dump(temporal_preds_behav, handle)
 
     cnf_matrix_ground_preds = confusion_matrix(ground_behav, preds_behav)
-    cnf_matrix_ground_temporal_preds = confusion_matrix(ground_behav, temporal_preds_behav)
+    #cnf_matrix_ground_temporal_preds = confusion_matrix(ground_behav, temporal_preds_behav)
     np.set_printoptions(precision=2)
     gp_balacc, gp_normmatrix = get_bal_acc(cnf_matrix_ground_preds)
-    gtp_balacc, gtp_normmatrix = get_bal_acc(cnf_matrix_ground_temporal_preds)
+    #gtp_balacc, gtp_normmatrix = get_bal_acc(cnf_matrix_ground_temporal_preds)
 
-    plot_confusion_matrix(png_path='/home/rohitsaha/tanner_ground_preds.png',
+    plot_confusion_matrix(png_path='/home/kalpitthakkar/v1_selected_ground_preds.png',
         cnf_matrix=gp_normmatrix,
         classes=behaviors,
         annot_1='Ground_truth',
         annot_2='Predictions',
         balanced_acc=gp_balacc,
-        title='Tanner\'s held-out video stats: ',
+        title='v1_selected_labels_test_performance: ',
         cmap=plt.cm.Blues)
 
-    plot_confusion_matrix(png_path='/home/rohitsaha/tanner_ground_temporal_preds_slack20.png',
-        cnf_matrix=gtp_normmatrix,
-        classes=behaviors,
-        annot_1='Ground_truth',
-        annot_2='Predictions',
-        balanced_acc=gtp_balacc,
-        title='Tanner\'s held-out video stats, slack=20, : ',
-        cmap=plt.cm.Blues)
+    #plot_confusion_matrix(png_path='/home/kalpitthakkar/v1_selected_ground_temporal_preds_slack20.png',
+    #    cnf_matrix=gtp_normmatrix,
+    #    classes=behaviors,
+    #    annot_1='Ground_truth',
+    #    annot_2='Predictions',
+    #    balanced_acc=gtp_balacc,
+    #    title='v1_selected_labels_test_performance, slack=20, : ',
+    #    cmap=plt.cm.Blues)
 
 
 if __name__ == '__main__':

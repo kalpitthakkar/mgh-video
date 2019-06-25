@@ -207,6 +207,11 @@ flags.DEFINE_string(
     default='sgd',
     help='Specify optimizer: [adam, sgd]')
 
+flags.DEFINE_string(
+    'init_checkpoint',
+    default='gs://serrelab/biomotion/checkpoints/model.ckpt',
+    help='The checkpoint from which you want to initialize the weights')
+
 flags.DEFINE_float(
     'base_learning_rate',
     default=0.01,
@@ -390,6 +395,8 @@ def i3d_model_fn(features, labels, mode, params):
         steps_per_epoch = FLAGS.num_train_videos / FLAGS.train_batch_size
         current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
 
+        # For MGH, we only need to optimize the FC layers
+        vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Logits')
         # LARS is a large batch optimizer. LARS enables higher accuracy at batch
         # 16K and larger batch sizes.
         if FLAGS.train_batch_size >= 16384 and FLAGS.enable_lars:
@@ -432,11 +439,13 @@ def i3d_model_fn(features, labels, mode, params):
             with tf.control_dependencies(update_ops):
                 train_op = optimizer.minimize(
                     loss,
-                    global_step)
+                    global_step,
+                    var_list=vars_to_optimize)
         else:
             train_op = optimizer.minimize(
                 loss,
-                global_step)
+                global_step,
+                var_list=vars_to_optimize)
         
         if not FLAGS.skip_host_call:
             def host_call_fn(gs, loss, acc, ce):#lr, ce):
@@ -677,6 +686,11 @@ def main(unused_argv):
         export_to_tpu: If True, export_savedmodel() exports a metagraph for serving on TPU
             besides the one on CPU.
     '''
+    
+    ws = tf.estimator.WarmStartSettings(
+        ckpt_to_initialize_from=FLAGS.init_checkpoint,
+        vars_to_warm_start=["Conv3d_*w", "Conv3d_*beta", "Mixed_*beta", "Mixed_*w"]
+    )
 
     i3d_classifier = tf.contrib.tpu.TPUEstimator(
         use_tpu=FLAGS.use_tpu,
@@ -685,7 +699,8 @@ def main(unused_argv):
         train_batch_size=FLAGS.train_batch_size,
         eval_batch_size=FLAGS.eval_batch_size,
         predict_batch_size=FLAGS.predict_batch_size,
-        export_to_tpu=FLAGS.export_to_tpu)
+        export_to_tpu=FLAGS.export_to_tpu,
+        warm_start_from=ws)
 
     if FLAGS.mode == 'train_and_eval' and FLAGS.train_num_cores > 8:
         i3d_eval = tf.contrib.tpu.TPUEstimator(
@@ -694,7 +709,8 @@ def main(unused_argv):
             config=config_eval,
             train_batch_size=FLAGS.train_batch_size,
             eval_batch_size=FLAGS.eval_batch_size,
-            export_to_tpu=FLAGS.export_to_tpu)
+            export_to_tpu=FLAGS.export_to_tpu,
+            warm_start_from=ws)
 
     assert FLAGS.precision == 'bfloat16' or FLAGS.precision == 'float32', (
         'Invalid value for --precision flag; must be bfloat16 or float32.')

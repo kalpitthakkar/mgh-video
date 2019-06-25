@@ -8,7 +8,7 @@ python train_model.py \
     --eval_tpu_zone us-central1-f \
     --eval_num_cores 8 \
     --gcp_project beyond-dl-1503610372419 \
-    --data_dir gs://serrelab/MGH/tfrecords/v1_annotations \
+    --data_dir gs://serrelab/MGH/tfrecords/v1_annotations/mgh_train_directory \
     --model_dir gs://serrelab/MGH/model_runs/v1_annots_v3-8_b256_15classes_adamlre-3_i3d \
     --profile_every_n_steps 0 \
     --mode train \

@@ -587,7 +587,7 @@ def build_i3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False
 
     return model
 
-def InceptionI3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False,
+def InceptionI3d(only_imagenet=True, final_endpoint='Logits', use_batch_norm=False,
                 use_cross_replica_batch_norm=False, num_classes=101,
                 spatial_squeeze=True, num_cores=8,
                 dropout_keep_prob=1.0):

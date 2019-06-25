@@ -108,6 +108,7 @@ class InputPipelineTFExample(object):
         file_pattern = os.path.join(
             self.data_dir,
             'mgh_train*' if self.is_training else 'mgh_test*')
+        print(file_pattern)
         
         # For multi-host training (in the case of v2-32/64/128/512),
         # we want each host to process the same subset of shards.

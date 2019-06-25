@@ -80,7 +80,7 @@ def conv_batchnorm_relu(input_var, layer_name, out_channels,
 
         with tf.variable_scope(
             conv_name):
-
+        
             w = tf.get_variable(
                 'w',
                 filter_shape,
