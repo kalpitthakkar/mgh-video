@@ -157,9 +157,9 @@ def preprocess_volume(volume,
         volume = tf.reshape(
             volume,
             [
-                num_frames[0],
-                height[0],
-                width[0],
+                num_frames,
+                height,
+                width,
                 3])
 
     if is_training:

@@ -17,7 +17,7 @@ from absl import flags
 from absl import app
 
 # Get test shards from bucket
-test_shards_path = '/media/data_cifs/Kalpit/MGH/mgh_test_directory'
+test_shards_path = '/media/data_cifs/MGH/tf_records/mgh_test_directory'
 shards = tf.gfile.Glob(
     os.path.join(
         test_shards_path,
@@ -40,7 +40,7 @@ flags.DEFINE_integer(
     help='To specify the checkpoint')
 
 
-BEHAVIORS_INDICES = {
+BEHAVIOR_INDICES = {
     0: 'adjust_items_body_L',
     1: 'adjust_items_body_R',
     2: 'adjust_items_face_or_head_L',
@@ -114,7 +114,7 @@ def plot_confusion_matrix(png_path='',
             title='',
             cmap=plt.cm.Blues):
 
-    plt.figure()
+    plt.figure(figsize=(18,16))
     plt.imshow(
         cnf_matrix,
         interpolation='nearest',
@@ -129,10 +129,12 @@ def plot_confusion_matrix(png_path='',
     plt.xticks(
         tick_marks,
         classes,
-        rotation=45)
+        rotation=45,
+        fontsize=8)
     plt.yticks(
         tick_marks,
-        classes)
+        classes,
+        fontsize=8)
 
     fmt = '.2f'
     thresh = cnf_matrix.max() / 2.
@@ -235,22 +237,19 @@ def read_and_decode(filename_queue):
 
 def main(unused_argv):
 
-    all_preds, all_ground, all_temporal_preds = [], [], []
+    all_preds, all_ground = [], []
 
-    common_path = 'gs://serrelab/MGH/model_runs/'
+    common_path = '/media/data_cifs/MGH/model_runs/'
     ckpt_path = os.path.join(
         common_path,
         FLAGS.model_folder_name,
         'model.ckpt-{}'.format(FLAGS.step))
-    meta_path = os.path.join(
-        common_path,
-        FLAGS.model_folder_name,
-        'model.ckpt-{}.meta'.format(FLAGS.step))
 
     with tf.Session().as_default() as sess:
         filename_queue = tf.train.string_input_producer(
             shards,
-            num_epochs=None)
+            num_epochs=1)
+        print(filename_queue)
         video, label, filename, sframes, eframes = read_and_decode(filename_queue)
         label = tf.one_hot(label, 15, dtype=tf.float32)
 
@@ -260,7 +259,7 @@ def main(unused_argv):
             use_cross_replica_batch_norm=True,
             num_classes=15,
             spatial_squeeze=True,
-            dropout_keep_prob=0.7)
+            dropout_keep_prob=1.0)
 
         logits, end_points = network(
             inputs=video,
@@ -270,6 +269,7 @@ def main(unused_argv):
             tf.global_variables_initializer(),
             tf.local_variables_initializer())
 
+        sess.run(init_op)
         saver = tf.train.Saver()
         saver.restore(sess, ckpt_path)
 
@@ -281,6 +281,7 @@ def main(unused_argv):
             for i in range(int(test_examples/batch_size)):
                 preds, labs, fname, sframe, eframe = sess.run(
                     [logits, label, filename, sframes, eframes])
+                print(fname)
                 preds_max = list(np.argmax(preds, axis=-1))
                 labs_max = list(np.argmax(labs, axis=-1))
                 all_preds += preds_max
