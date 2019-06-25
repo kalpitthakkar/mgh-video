@@ -152,7 +152,8 @@ def _process_clips_batch(thread_index, ranges,
                         BEHAVIORS_INDICES, phase,
                         frames_per_clip, frame_height,
                         frame_width, channels,
-                        transition, video_dir):
+                        transition, video_dir,
+                        sampling_style='uniform'):      # 'uniform' or 'chunks'  
     '''Processes and saves list of clips as TFRecord in 1 thread.
         Each thread produces N shards where,
             N = int(num_shards / num_threads)
@@ -224,9 +225,14 @@ def _process_clips_batch(thread_index, ranges,
             if (end_frame - start_frame) < 16:
                 continue
             else:
-                sample_itr = (end_frame - start_frame) // 16
-                stride = (end_frame - start_frame - 16) // sample_itr
-                idxs = np.arange(start_frame, end_frame+1)
+                if sampling_style == 'chunks':
+                    sample_itr = (end_frame - start_frame) // 16
+                    stride = (end_frame - start_frame - 16) // sample_itr
+                    idxs = np.arange(start_frame, end_frame+1, stride)
+                elif sampling_style == 'uniform':
+                    sample_itr = 0
+                    stride = 16
+                    idxs = np.int32(np.round(np.linspace(start_frame, end_frame, 16)))
                 for r in range(sample_itr+1):
                     if idxs[15+r*stride] <= end_frame:
                         chosen_idx = idxs[r*stride:16+r*stride]
@@ -404,15 +410,16 @@ def control(args=None):
 
     ##### DIRECTORIES OF INTEREST
     BASE_DIR = '/media/data_cifs/MGH/'
+    EXP_NAME = 'v1_selected_pretrainedi3d_uniformsample'
+    PICKLE_SPLIT = 'v1_selected'
+    PICKLE_DIR = os.path.join(BASE_DIR, 'pickle_files', PICKLE_SPLIT)
     VIDEO_DIR = os.path.join(
         BASE_DIR,
         'videos/')
-    PICKLE_DIR = os.path.join(
-        BASE_DIR,
-        'pickle_files/')
     SHARDS_DIR = os.path.join(
         BASE_DIR,
         'tf_records',
+        EXP_NAME,
         args.phase + '_directory/')
 
     # Check if directories are present
@@ -420,7 +427,7 @@ def control(args=None):
         raise IOError('{} does not exist, create\
             meta pickle data with suitable\
             commands?'.format(PICKLE_DIR))
-    pickle_filepath = PICKLE_DIR + args.phase + '.pkl'
+    pickle_filepath = os.path.join(PICKLE_DIR, args.phase + '.pkl')
     if not os.path.isfile(pickle_filepath):
         raise IOError('{}.pkl does not exist in\
             {}'.format(args.phase, PICKLE_DIR))
