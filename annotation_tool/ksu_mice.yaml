@@ -1,9 +1,10 @@
-data_dir: /media/data_cifs/KSU_mice/tf_records/train_directory
+data_dir: /media/data_cifs/KSU_mice/tf_records/chunk_1
 output_dir: /media/data_cifs/KSU_mice/clickme_annots
+tfrecords_output_dir: /media/data_cifs/KSU_mice/tf_records/clickme
 parts: 'attention_loc'
 attention_radius: 6
 multiframe: 0
-samples_to_annotate: 10000
+samples_to_annotate: 34
 controls:
     'a': "prev"
     'd': "next"

@@ -253,6 +253,10 @@ class AnnotationGUI(object):
             if status == 'exit':
                 self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
                 print('Save & Quit!')
+                if chunk == 'left':
+                    self.left_annots = self.annots
+                else:
+                    self.right_annots = self.annots
                 break
             if status == 'prev_frame':
                 i -= 1
@@ -266,7 +270,7 @@ class AnnotationGUI(object):
                 status = 'stay'
             if status == 'copy':
                 if i != 0:
-                    self.annots.iloc[i, -1] = self.annots.iloc[i - 1, -1]
+                    self.annots['attention_loc'].iloc[i] = self.annots['attention_loc'].iloc[i - 1]
                 if i % 10 == 0:
                     self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
                 status = 'stay'
