@@ -26,6 +26,7 @@ class AnnotationGUI(object):
 
         self.left_annots = None
         self.right_annots = None
+        self.data = data
         self.annotTool = AnnotationTool(
             data, data_type, with_annots, annots_file_ext,
             output_dir, yaml_config
@@ -39,14 +40,12 @@ class AnnotationGUI(object):
         if index == 0:
             chunk = 'left'
             v_data = np.squeeze(data[0])
-            print(v_data.shape)
         else:
             chunk = 'right'
             v_data = np.squeeze(data[1])
-            print(v_data.shape)
         self.show_video_with_annots(v_data, data[2], data[3], data[4], chunk)
     
-    def cv2WindowInit(self, v_data, vname, frame, chunk='Left', bb_path=None):
+    def cv2WindowInit(self, v_data, vname, label, frame, chunk='Left', bb_path=None):
         vname = str(vname[0].decode("utf-8"))
         self.save_path_prefix = os.path.join(self.annotTool.output_dir, vname)
         if not os.path.exists(self.save_path_prefix):
@@ -68,8 +67,8 @@ class AnnotationGUI(object):
         playerheight = v_data[0].shape[1]
         if bb_path:
             self.annots = pd.read_csv(bb_path)
-        elif os.path.exists(os.path.join(self.save_path_prefix, 'annots_'+chunk.lower()+'.csv')):
-            self.annots = pd.read_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk.lower()+'.csv')) 
+        elif os.path.exists(os.path.join(self.save_path_prefix, 'annots_'+chunk.lower()+'_label'+str(label[0])+'_'+str(frame[0])+'.csv')):
+            self.annots = pd.read_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk.lower()+'_label'+str(label[0])+'_'+str(frame[0])+'.csv')) 
         else:
             columns = ['video_path', 'frame_n']
             for p in self.annotTool.parts:
@@ -115,10 +114,10 @@ class AnnotationGUI(object):
         
     def show_video_with_annots(self, v_data, label, vname, frame, chunk):
         if chunk == 'left':
-            self.cv2WindowInit(v_data, vname, frame, 'Left')
+            self.cv2WindowInit(v_data, vname, label, frame, 'Left')
             player_wname = 'Data chunk - Left'
         else:
-            self.cv2WindowInit(v_data, vname, frame, 'Right')
+            self.cv2WindowInit(v_data, vname, label, frame, 'Right')
             player_wname = 'Data chunk - Right'
         control_wname = 'Controls'
         color_wname = 'Color mappings'
@@ -174,7 +173,7 @@ class AnnotationGUI(object):
 
                 status = 'stay'
                 if i % 10 == 0:
-                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
             if status == 'move_marker_down':
                 for joint_name in self.annotTool.annotObj.parts:
                     joint = self.annotTool.annotObj.parts[joint_name]
@@ -190,7 +189,7 @@ class AnnotationGUI(object):
 
                 status = 'stay'
                 if i % 10 == 0:
-                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
             if status == 'move_marker_left':
                 for joint_name in self.annotTool.annotObj.parts:
                     joint = self.annotTool.annotObj.parts[joint_name]
@@ -206,7 +205,7 @@ class AnnotationGUI(object):
 
                 status = 'stay'
                 if i % 10 == 0:
-                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
             if status == 'move_marker_right':
                 for joint_name in self.annotTool.annotObj.parts:
                     joint = self.annotTool.annotObj.parts[joint_name]
@@ -222,7 +221,7 @@ class AnnotationGUI(object):
 
                 status = 'stay'
                 if i % 10 == 0:
-                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
             if status == 'play':
                 frame_rate = cv2.getTrackbarPos('F', player_wname)
                 sleep((0.1 - frame_rate / 1000.0) ** 21021)
@@ -235,7 +234,7 @@ class AnnotationGUI(object):
             if status == 'stay':
                 i = cv2.getTrackbarPos('S', player_wname)
             if status == 'save':
-                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
                 print('Progress saved!')
                 if chunk == 'left':
                     self.left_annots = self.annots
@@ -243,7 +242,7 @@ class AnnotationGUI(object):
                     self.right_annots = self.annots
                 status = 'stay'
             if status == 'quit':
-                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
                 print('Quit. Progress automatically saved!')
                 if chunk == 'left':
                     self.left_annots = self.annots
@@ -251,7 +250,7 @@ class AnnotationGUI(object):
                     self.right_annots = self.annots
                 break
             if status == 'exit':
-                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
                 print('Save & Quit!')
                 if chunk == 'left':
                     self.left_annots = self.annots
@@ -272,7 +271,7 @@ class AnnotationGUI(object):
                 if i != 0:
                     self.annots['attention_loc'].iloc[i] = self.annots['attention_loc'].iloc[i - 1]
                 if i % 10 == 0:
-                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'.csv'), index=False)
+                    self.annots.to_csv(os.path.join(self.save_path_prefix, 'annots_'+chunk+'_label'+str(label[0])+'_'+str(frame[0])+'.csv'), index=False)
                 status = 'stay'
             if status == 'slow':
                 frame_rate = max(frame_rate - 5, 0)

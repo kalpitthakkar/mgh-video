@@ -1,13 +1,12 @@
 import yaml
 
 import os
+import pickle
 import tensorflow as tf
 
 import numpy as np
 import create_mask_shards as cms
 from annotate_gui import AnnotationGUI
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 def data_read(f):
     queue = tf.train.string_input_producer(f, num_epochs=1)
@@ -75,9 +74,20 @@ if __name__ == '__main__':
     videos = os.listdir(video_dir)
     data_dir = out['data_dir']
     output_dir = out['output_dir']
+    pickle_dir = out['pickle_dir']
     tfr_output_dir = out['tfrecords_output_dir']
+
     if not os.path.exists(tfr_output_dir):
         os.makedirs(tfr_output_dir)
+    # Initialize ctr with number of shards present in output dir
+    ctr = len(os.listdir(tfr_output_dir)) + 1
+    if not os.path.exists(pickle_dir):
+        os.makedirs(os.path.split(pickle_dir)[0])
+        visited = {}
+    else:
+        with open(pickle_dir, 'rb') as handle:
+            visited = pickle.load(handle)
+
     data_shards = [os.path.join(data_dir, fi) for fi in os.listdir(data_dir)]
     name_shards = os.listdir(data_dir)
     lclips, rclips, labs, vname, fnum = data_read(data_shards)
@@ -90,18 +100,21 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(init_op)
         coord = tf.train.Coordinator()
-        ctr = 0
         dir_name = os.path.basename(data_dir)
         if not os.path.exists(os.path.join(tfr_output_dir, dir_name)):
             os.makedirs(os.path.join(tfr_output_dir, dir_name))
-        output_file = os.path.join(tfr_output_dir, dir_name, name_shards[ctr]) 
+        output_file = os.path.join(tfr_output_dir, dir_name, "train-{}".format(str(ctr)))
         threads = tf.train.start_queue_runners(coord=coord)
-        writer = tf.python_io.TFRecordWriter(output_file)
+        writer = tf.python_io.TFRecordWriter(output_file) 
+        n_examples = 0
         for i in range(out['samples_to_annotate']):
             l, r, lab, vidname, frame = sess.run([lclips, rclips, labs, vname, fnum])
             l, r = l.squeeze(), r.squeeze()
-            if vidname not in videos:
+            if vidname[0] not in videos:
                 continue
+            if vidname[0] in visited:
+                if frame[0] in visited[vidname[0]]:
+                    continue
             # Create a gui for each sample separately => cannot save the data,
             # else it'll occupy too much space
             gui = AnnotationGUI(data=[l, r, lab, vidname, frame], output_dir=output_dir,
@@ -110,7 +123,11 @@ if __name__ == '__main__':
 
             root = gui.build_gui()
             root.mainloop()
-            
+
+            if vidname[0] not in visited:
+                visited[vidname[0]] = []
+            visited[vidname[0]].append(frame[0])
+
             # Can access the annotations using gui.left_annots and gui.right_annots.
             # They are dataframes with columns ['video_path', 'frame_n', 'attention_loc']
             # 'video_path' is just the video name and other columns are self-explanatory.
@@ -130,15 +147,19 @@ if __name__ == '__main__':
                 frame=frame[0]
             ) 
 
-            ctr += 1
+            n_examples += 1
             writer.write(example.SerializeToString())
-            if ctr % 1 == 0:
+            if n_examples % 1 == 0:
                 # Code to write this to TFRecords
                 # Close writer and create a new writer
+                n_examples = 0
                 writer.close()
                 print("TFRecord file " + output_file + " written with 16 clips")
-                
-                output_file = os.path.join(tfr_output_dir, dir_name, name_shards[ctr])
+                with open(pickle_dir, 'wb') as handle:
+                    pickle.dump(visited, handle)
+
+                ctr += 1
+                output_file = os.path.join(tfr_output_dir, dir_name, "train-{}".format(str(ctr)))
                 # Open a new writer
                 writer = tf.python_io.TFRecordWriter(output_file)
             

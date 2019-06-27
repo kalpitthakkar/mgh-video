@@ -1,5 +1,6 @@
 data_dir: /media/data_cifs/KSU_mice/tf_records/chunk_1
 output_dir: /media/data_cifs/KSU_mice/clickme_annots
+pickle_dir: /media/data_cifs/KSU_mice/annot_pickle/chunk_1.pkl
 tfrecords_output_dir: /media/data_cifs/KSU_mice/tf_records/clickme
 parts: 'attention_loc'
 attention_radius: 6
