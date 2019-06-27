@@ -81,8 +81,9 @@ if __name__ == '__main__':
         os.makedirs(tfr_output_dir)
     # Initialize ctr with number of shards present in output dir
     ctr = len(os.listdir(tfr_output_dir)) + 1
-    if not os.path.exists(pickle_dir):
+    if not os.path.exists(os.path.split(pickle_dir)[0]):
         os.makedirs(os.path.split(pickle_dir)[0])
+    if not os.path.isfile(pickle_dir):
         visited = {}
     else:
         with open(pickle_dir, 'rb') as handle:
