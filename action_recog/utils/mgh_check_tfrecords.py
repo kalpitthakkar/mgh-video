@@ -4,7 +4,8 @@ import tensorflow as tf
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-mgh_path = '/media/data_cifs/MGH/tf_records/mgh_test_directory/'
+#mgh_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_uniformsample_32seq/mgh_test_directory/'
+mgh_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_uniformsample/mgh_test_directory/'
 mgh_shards = [mgh_path + fi for fi in os.listdir(mgh_path)]
 
 def mgh_read(f):
@@ -25,6 +26,7 @@ def mgh_read(f):
     start = tf.cast(parsed['data/start_frame'], tf.int32)
     end = tf.cast(parsed['data/end_frame'], tf.int32)
 
+    #data_clip = tf.reshape(data_clip, [32, 256, 256, 3])
     data_clip = tf.reshape(data_clip, [16, 256, 256, 3])
     data_clips, labels = tf.train.shuffle_batch(
         [data_clip, label],

@@ -8,7 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import itertools
 from sklearn.metrics import confusion_matrix
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+#os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from central_reservoir.models import i3d
 from central_reservoir.augmentations import preprocessing_volume
@@ -17,13 +17,13 @@ from absl import flags
 from absl import app
 
 # Get test shards from bucket
-test_shards_path = '/media/data_cifs/MGH/tf_records/mgh_test_directory'
+test_shards_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_uniformsample_32seq_combined/mgh_test_directory'
 shards = tf.gfile.Glob(
     os.path.join(
         test_shards_path,
         'mgh_test*'))
 print('{} testing shards found'.format(len(shards)))
-test_examples = 2000
+test_examples = 200
 batch_size = 20
 print('Testing examples: {}'.format(test_examples))
 
@@ -31,15 +31,15 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     'model_folder_name',
-    default='v1_annots_v3-8_b256_15classes_adamlre-3_i3d',
+    default='v1_uniformsample_32seq_combined_v3-8_b256_15classes_adamlre-3_i3d_weightedloss_logits',
     help='To mention the model path')
 
 flags.DEFINE_integer(
     'step',
-    default=14000,
+    default=2700,
     help='To specify the checkpoint')
 
-
+'''
 BEHAVIOR_INDICES = {
     0: 'adjust_items_body_L',
     1: 'adjust_items_body_R',
@@ -74,6 +74,31 @@ behaviors = [
     'rest',
     'withdraw_reach_gesture_L',
     'withdraw_reach_gesture_R'
+]
+'''
+
+BEHAVIOR_INDICES = {
+    0: 'adjust_items_body',
+    1: 'adjust_items_face_or_head',
+    2: 'background',
+    3: 'finemanipulate_object',
+    4: 'grasp_and_move',
+    5: 'reach_face_or_head',
+    6: 'reach_nearobject',
+    7: 'rest',
+    8: 'withdraw_reach_gesture',
+}
+
+behaviors = [
+    'adjust_items_body',
+    'adjust_items_face_or_head',
+    'background',
+    'finemanipulate_object',
+    'grasp_and_move',
+    'reach_face_or_head',
+    'reach_nearobject',
+    'rest',
+    'withdraw_reach_gesture',
 ]
 
 slack_window = 20
@@ -220,7 +245,7 @@ def read_and_decode(filename_queue):
 
     video = preprocessing_volume.preprocess_volume(
         volume=video,
-        num_frames=16,
+        num_frames=32,
         height=height,
         width=width,
         is_training=False,
@@ -251,13 +276,14 @@ def main(unused_argv):
             num_epochs=1)
         print(filename_queue)
         video, label, filename, sframes, eframes = read_and_decode(filename_queue)
-        label = tf.one_hot(label, 15, dtype=tf.float32)
+        #label = tf.one_hot(label, 15, dtype=tf.float32)
+        label = tf.one_hot(label, 9, dtype=tf.float32)
 
         network = i3d.InceptionI3d(
             final_endpoint='Logits',
             use_batch_norm=True,
             use_cross_replica_batch_norm=True,
-            num_classes=15,
+            num_classes=9,
             spatial_squeeze=True,
             dropout_keep_prob=1.0)
 

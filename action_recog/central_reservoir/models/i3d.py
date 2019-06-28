@@ -559,7 +559,7 @@ def build_i3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False
                 # 1x1x1 Conv, stride 1
                 logits = conv_batchnorm_relu(net, 'Conv3d_0c_1x1', num_classes,
                     kernel_size=1, stride=1, activation=None,
-                    use_batch_norm=use_batch_norm, use_cross_replica_batch_norm=use_cross_replica_batch_norm,
+                    use_batch_norm=False, use_cross_replica_batch_norm=False,
                     is_training=is_training, num_cores=num_cores)
                 get_shape = logits.get_shape().as_list()
                 print('{} / Conv3d_0c_1x1 : {}'.format(end_point, get_shape))

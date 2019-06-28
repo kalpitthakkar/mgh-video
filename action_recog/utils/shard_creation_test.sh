@@ -1,8 +1,8 @@
 #!/usr/bin/env/bash
 python shard_creation.py \
-    --frames_per_clip 16 \
+    --frames_per_clip 32 \
     --phase mgh_test \
-    --num_shards 1 \
+    --num_shards 2 \
     --frame_height 256 \
     --frame_width 256 \
     --channels 3 \

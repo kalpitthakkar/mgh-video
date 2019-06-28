@@ -217,68 +217,73 @@ def _process_clips_batch(thread_index, ranges,
             end_frame = filenames[i][2]
             label = labels[i]
             if transition:
-                label = [BEHAVIORS_INDICES[lab] for lab in label]
+                label = []
+                for lab in label:
+                    for k in BEHAVIORS_INDICES.keys():
+                        if k in lab:
+                            lidx = BEHAVIORS_INDICES[k]
+                        label.append(lidx)
+                #label = [BEHAVIORS_INDICES[lab] for lab in label]
                 label = np.asarray([label], dtype=np.int32) 
             else:
-                label = BEHAVIORS_INDICES[label]
+                #label = BEHAVIORS_INDICES[label]
+                for k in BEHAVIORS_INDICES.keys():
+                    if k in label:
+                        lidx = BEHAVIORS_INDICES[k]
+                label = lidx
 
-            if (end_frame - start_frame) < 16:
-                continue
+            if (end_frame - start_frame) < frames_per_clip:
+                chosen_idx = np.arange(start_frame, end_frame+1, 1)
             else:
                 if sampling_style == 'chunks':
-                    sample_itr = (end_frame - start_frame) // 16
-                    stride = (end_frame - start_frame - 16) // sample_itr
+                    sample_itr = (end_frame - start_frame) // frames_per_clip
+                    stride = (end_frame - start_frame - frames_per_clip) // sample_itr
                     idxs = np.arange(start_frame, end_frame+1, stride)
                 elif sampling_style == 'uniform':
                     sample_itr = 0
-                    stride = 16
-                    idxs = np.int32(np.round(np.linspace(start_frame, end_frame, 16)))
-                for r in range(sample_itr+1):
-                    if idxs[15+r*stride] <= end_frame:
-                        chosen_idx = idxs[r*stride:16+r*stride]
-                    else:
-                        continue
-                    #import ipdb; ipdb.set_trace()
+                    stride = frames_per_clip
+                    idxs = np.int32(np.round(np.linspace(start_frame, end_frame, frames_per_clip)))
+                chosen_idx = idxs
 
-                    # Get the clip based on frame number
-                    data_clip = opencv_get_clip(
-                        video_name=video_name,
-                        video_dir=video_dir,
-                        start_frame=start_frame,
-                        end_frame=end_frame,
-                        chosen_idx=chosen_idx,
-                        frames_per_clip=frames_per_clip,
-                        frame_height=frame_height,
-                        frame_width=frame_width,
-                        channels=channels)
+            # Get the clip based on frame number
+            data_clip = opencv_get_clip(
+                video_name=video_name,
+                video_dir=video_dir,
+                start_frame=start_frame,
+                end_frame=end_frame,
+                chosen_idx=chosen_idx,
+                frames_per_clip=frames_per_clip,
+                frame_height=frame_height,
+                frame_width=frame_width,
+                channels=channels)
 
-                    cond_1 = not data_clip is None
+            cond_1 = not data_clip is None
 
-                    if cond_1: 
-                        # Get example protocol buffer
-                        example = feat_example(
-                            label=label,
-                            data_clip=data_clip,
-                            filename=video_name,
-                            start_frame=chosen_idx[0],
-                            end_frame=chosen_idx[-1],
-                            transition=transition)
+            if cond_1: 
+                # Get example protocol buffer
+                example = feat_example(
+                    label=label,
+                    data_clip=data_clip,
+                    filename=video_name,
+                    start_frame=chosen_idx[0],
+                    end_frame=chosen_idx[-1],
+                    transition=transition)
 
-                        # Serialize to string and write to file
-                        writer.write(
-                            example.SerializeToString())
-                    
-                        shard_counter += 1
-                        counter += 1
+                # Serialize to string and write to file
+                writer.write(
+                    example.SerializeToString())
+            
+                shard_counter += 1
+                counter += 1
 
-                        if not counter % 200:
-                            print('%s [thread %d]: Processed %d of %d clips in thread batch.'\
-                                %(datetime.now(), thread_index, counter,\
-                                    num_files_in_thread))
-                            sys.stdout.flush()
-                    else:
-                        print('%s, [%d, %d], [%s] problematic.'%(video_name,\
-                            start_frame, end_frame, label))
+                if not counter % 200:
+                    print('%s [thread %d]: Processed %d of %d clips in thread batch.'\
+                        %(datetime.now(), thread_index, counter,\
+                            num_files_in_thread))
+                    sys.stdout.flush()
+            else:
+                print('%s, [%d, %d], [%s] problematic.'%(video_name,\
+                    start_frame, end_frame, label))
         try:
             writer.close()
             print('%s [thread %d]: Wrote %d clips to %s'\
@@ -408,9 +413,21 @@ def control(args=None):
         'withdraw_reach_gesture_R': 14
     }
 
+    BEHAVIORS_INDICES_COMBINED = {
+        'adjust_items_body': 0,
+        'adjust_items_face_or_head': 1,
+        'background': 2,
+        'finemanipulate_object': 3,
+        'grasp_and_move': 4,
+        'reach_face_or_head': 5,
+        'reach_nearobject': 6,
+        'rest': 7,
+        'withdraw_reach_gesture': 8,
+    }
+
     ##### DIRECTORIES OF INTEREST
     BASE_DIR = '/media/data_cifs/MGH/'
-    EXP_NAME = 'v1_selected_pretrainedi3d_uniformsample'
+    EXP_NAME = 'v1_selected_pretrainedi3d_uniformsample_32seq_combined'
     PICKLE_SPLIT = 'v1_selected'
     PICKLE_DIR = os.path.join(BASE_DIR, 'pickle_files', PICKLE_SPLIT)
     VIDEO_DIR = os.path.join(
@@ -464,7 +481,8 @@ def control(args=None):
         num_shards=args.num_shards,
         shard_dir=SHARDS_DIR,
         num_threads=num_threads,
-        BEHAVIORS_INDICES=BEHAVIORS_INDICES,
+        #BEHAVIORS_INDICES=BEHAVIORS_INDICES,
+        BEHAVIORS_INDICES=BEHAVIORS_INDICES_COMBINED,
         phase=args.phase,
         frames_per_clip=args.frames_per_clip,
         frame_height=args.frame_height,
@@ -523,7 +541,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--frames_per_clip',
         type=int,
-        default=16)
+        default=32)
 
     parser.add_argument(
         '--phase',
