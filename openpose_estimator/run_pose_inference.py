@@ -66,8 +66,9 @@ if __name__ == '__main__':
 
                 if (cap.isOpened() == False):
                     print("Error opening video stream or file")
+                    continue
 
-                out_root = os.path.join(conf_vals['data_dir'], sub)
+                out_root = os.path.join(conf_vals['pose_dir'], sub)
                 if not os.path.exists(out_root):
                     os.makedirs(out_root)
 

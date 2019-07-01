@@ -1,5 +1,6 @@
 estimate_pose:
-    data_dir: "/media/kalpitthakkar/My\ Book1/pose_new_subjects_06132019"
+    data_dir: "/media/data_cifs/MGH/videos"
+    pose_dir: "/media/data_cifs/MGH/pose_predictions"
     data_ext: "avi"
     resolution: "432x368"
     model_name: "mobilenet_thin"

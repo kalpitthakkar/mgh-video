@@ -31,12 +31,12 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     'model_folder_name',
-    default='v1_uniformsample_32seq_combined_v3-8_b256_15classes_adamlre-3_i3d_weightedloss_logits',
+    default='v1_uniformsample_32seq_combined_v3-8_b256_15classes_adamlre-3_i3d_weightedloss_5c+logits',
     help='To mention the model path')
 
 flags.DEFINE_integer(
     'step',
-    default=2700,
+    default=14000,
     help='To specify the checkpoint')
 
 '''
