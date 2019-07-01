@@ -542,7 +542,7 @@ def build_i3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False
 
             end_points[end_point] = net
             if final_endpoint == end_point: return net, end_points
-
+            # net: [N, T/8, 1, 1, 1024]
             # Logits
             end_point = 'Logits'
             with tf.variable_scope(end_point):
@@ -553,6 +553,7 @@ def build_i3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False
                 print('{} / Average-pool3D: {}'.format(end_point, get_shape))
                 end_points[end_point + '_average_pool3d'] = net
 
+                # net: [N, T/16, 1, 1, 1024]
                 # Dropout
                 net = tf.nn.dropout(net, dropout_keep_prob)
 
@@ -563,6 +564,7 @@ def build_i3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False
                     is_training=is_training, num_cores=num_cores)
                 get_shape = logits.get_shape().as_list()
                 print('{} / Conv3d_0c_1x1 : {}'.format(end_point, get_shape))
+                # logits: [N, T/16, 1, 1, n_classes]
 
                 if spatial_squeeze:
                     # Removes dimensions of size 1 from the shape of a tensor
@@ -570,8 +572,9 @@ def build_i3d(only_imagenet=False, final_endpoint='Logits', use_batch_norm=False
                     logits = tf.squeeze(logits, [2, 3], name='SpatialSqueeze')
                     get_shape = logits.get_shape().as_list()
                     print('{} / Spatial Squeeze : {}'.format(end_point, get_shape))
+                    # [N, T/16, n_classes]
 
-            averaged_logits = tf.reduce_mean(logits, axis=1)
+            averaged_logits = tf.reduce_mean(logits, axis=1) # [N, num_classes]
             get_shape = averaged_logits.get_shape().as_list()
             print('{} / Averaged Logits : {}'.format(end_point, get_shape))
 

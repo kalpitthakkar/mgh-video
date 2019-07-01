@@ -24,6 +24,66 @@ from tensorflow.contrib import summary
 #TODO: 1. 5-D Augmentation scheme, 2. Document structure,
 # 3. Fix bfloat16 issue.
 
+#BEHAVIORS_INDICES = {
+#    'adjust_items_body_L': 0,
+#    'adjust_items_body_R': 1,
+#    'adjust_items_face_or_head_L': 2,
+#    'adjust_items_face_or_head_R': 3,
+#    'background': 4,
+#    'finemanipulate_object': 5,
+#    'grasp_and_move_L': 6,
+#    'grasp_and_move_R': 7,
+#    'reach_face_or_head_L': 8,
+#    'reach_face_or_head_R': 9,
+#    'reach_nearobject_L': 10,
+#    'reach_nearobject_R': 11,
+#    'rest': 12,
+#    'withdraw_reach_gesture_L': 13,
+#    'withdraw_reach_gesture_R': 14
+#}
+
+BEHAVIORS_INDICES = {
+    'adjust_items_body': 0,
+    'adjust_items_face_or_head': 1,
+    'background': 2,
+    'finemanipulate_object': 3,
+    'grasp_and_move': 4,
+    'reach_face_or_head': 5,
+    'reach_nearobject': 6,
+    'rest': 7,
+    'withdraw_reach_gesture': 8
+}
+
+#class_weights = {
+# 'adjust_items_body_L': 43.0,
+# 'adjust_items_body_R': 41.0,
+# 'adjust_items_face_or_head_L': 44.0,
+# 'adjust_items_face_or_head_R': 42.0,
+# 'background': 90.0,
+# 'finemanipulate_object': 26.0,
+# 'grasp_and_move_L': 15.0,
+# 'grasp_and_move_R': 19.0,
+# 'reach_face_or_head_L': 52.0,
+# 'reach_face_or_head_R': 41.0,
+# 'reach_nearobject_L': 24.0,
+# 'reach_nearobject_R': 45.0,
+# 'rest': 48.0,
+# 'withdraw_reach_gesture_L': 57.0,
+# 'withdraw_reach_gesture_R': 72.0
+#}
+
+class_weights = {
+ 'adjust_items_body': 84.0,
+ 'adjust_items_face_or_head': 86.0,
+ 'background': 90.0,
+ 'finemanipulate_object': 26.0,
+ 'grasp_and_move': 34.0,
+ 'reach_face_or_head': 93.0,
+ 'reach_nearobject': 69.0,
+ 'rest': 48.0,
+ 'withdraw_reach_gesture': 129.0,
+}
+
 FLAGS = flags.FLAGS
 
 ##### Cloud TPU Cluster Resolvers
@@ -185,6 +245,11 @@ flags.DEFINE_bool(
     default=False,
     help='Enable cache for training input')
 
+flags.DEFINE_string(
+    'class_num_samples',
+    default='/media/data_cifs/MGH/pickle_files/v1_selected/class_weights.pkl',
+    help='Path to pickle file containing the number of samples per class')
+
 ##### Training related flags
 flags.DEFINE_string(
     'export_dir',
@@ -210,6 +275,11 @@ flags.DEFINE_string(
 flags.DEFINE_string(
     'init_checkpoint',
     default='gs://serrelab/biomotion/checkpoints/model.ckpt',
+    help='The checkpoint from which you want to initialize the weights')
+
+flags.DEFINE_string(
+    'unfreeze_layers',
+    default='Logits',
     help='The checkpoint from which you want to initialize the weights')
 
 flags.DEFINE_float(
@@ -358,10 +428,23 @@ def i3d_model_fn(features, labels, mode, params):
         FLAGS.num_classes,
         dtype=tf.float32)
     
+    # Scale the cross entropy by the weight value for that class (handling imbalance)
+    cls_numbers = class_weights
+    cls_weights = []
+    tot = 0
+    for k,v in cls_numbers.items():
+        tot += v
+    for k,v in sorted(cls_numbers.items()):
+        cls_weights.append(tot/v)
+    #print(cls_weights)
+    weights = tf.constant(cls_weights)
+    weights_to_apply = tf.gather(weights, labels)
+
     cross_entropy = tf.losses.softmax_cross_entropy(
         logits=logits,
         onehot_labels=one_hot_labels,
-        label_smoothing=FLAGS.label_smoothing)
+        label_smoothing=FLAGS.label_smoothing,
+        weights=weights_to_apply)
 
     # Add weight decay to the loss of for non-batch normalization variables.
     loss = cross_entropy + FLAGS.weight_decay * tf.add_n(
@@ -395,8 +478,14 @@ def i3d_model_fn(features, labels, mode, params):
         steps_per_epoch = FLAGS.num_train_videos / FLAGS.train_batch_size
         current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
 
-        # For MGH, we only need to optimize the FC layers
-        vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Logits')
+        if FLAGS.unfreeze_layers == '5C':
+            #vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+            vars_to_optimize = (tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Mixed_5c') +
+                    tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Logits')) 
+        else:
+            # For MGH, we only need to optimize the FC layers
+            vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Logits')
+
         # LARS is a large batch optimizer. LARS enables higher accuracy at batch
         # 16K and larger batch sizes.
         if FLAGS.train_batch_size >= 16384 and FLAGS.enable_lars:
@@ -687,20 +776,30 @@ def main(unused_argv):
             besides the one on CPU.
     '''
     
-    ws = tf.estimator.WarmStartSettings(
-        ckpt_to_initialize_from=FLAGS.init_checkpoint,
-        vars_to_warm_start=["Conv3d_*w", "Conv3d_*beta", "Mixed_*beta", "Mixed_*w"]
-    )
+    if not FLAGS.init_checkpoint == 'None':
+        ws = tf.estimator.WarmStartSettings(
+            ckpt_to_initialize_from=FLAGS.init_checkpoint,
+            vars_to_warm_start=["Conv3d_*w", "Conv3d_*beta", "Mixed_*beta", "Mixed_*w"]
+        )
 
-    i3d_classifier = tf.contrib.tpu.TPUEstimator(
-        use_tpu=FLAGS.use_tpu,
-        model_fn=i3d_model_fn,
-        config=config,
-        train_batch_size=FLAGS.train_batch_size,
-        eval_batch_size=FLAGS.eval_batch_size,
-        predict_batch_size=FLAGS.predict_batch_size,
-        export_to_tpu=FLAGS.export_to_tpu,
-        warm_start_from=ws)
+        i3d_classifier = tf.contrib.tpu.TPUEstimator(
+            use_tpu=FLAGS.use_tpu,
+            model_fn=i3d_model_fn,
+            config=config,
+            train_batch_size=FLAGS.train_batch_size,
+            eval_batch_size=FLAGS.eval_batch_size,
+            predict_batch_size=FLAGS.predict_batch_size,
+            export_to_tpu=FLAGS.export_to_tpu,
+            warm_start_from=ws)
+    else:
+        i3d_classifier = tf.contrib.tpu.TPUEstimator(
+            use_tpu=FLAGS.use_tpu,
+            model_fn=i3d_model_fn,
+            config=config,
+            train_batch_size=FLAGS.train_batch_size,
+            eval_batch_size=FLAGS.eval_batch_size,
+            predict_batch_size=FLAGS.predict_batch_size,
+            export_to_tpu=FLAGS.export_to_tpu)
 
     if FLAGS.mode == 'train_and_eval' and FLAGS.train_num_cores > 8:
         i3d_eval = tf.contrib.tpu.TPUEstimator(
@@ -737,7 +836,7 @@ def main(unused_argv):
             cache=FLAGS.use_cache and is_training,
             use_bfloat16=use_bfloat16,
             target_image_size=224,
-            num_frames=16,
+            num_frames=32,      # num_frames_change_here
             num_classes=15,
             num_parallel_calls=FLAGS.num_parallel_calls,
             list_of_augmentations=list_of_augmentations)
