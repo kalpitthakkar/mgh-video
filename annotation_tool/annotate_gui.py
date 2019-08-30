@@ -307,9 +307,9 @@ class AnnotationGUI(object):
                     status = 'stay'
             except KeyError:
                 print("Invalid Key was pressed")
-            except ValueError:
-                print("Don't try going out of the box!")
-                break
+            #except ValueError:
+            #    print("Don't try going out of the box!")
+            #    break
 
         cv2.destroyWindow(player_wname)
         cv2.destroyWindow(control_wname)

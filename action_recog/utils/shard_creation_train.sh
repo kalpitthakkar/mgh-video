@@ -2,7 +2,7 @@
 python shard_creation.py \
     --frames_per_clip 32 \
     --phase mgh_train \
-    --num_shards 32 \
+    --num_shards 256 \
     --frame_height 256 \
     --frame_width 256 \
     --channels 3 \

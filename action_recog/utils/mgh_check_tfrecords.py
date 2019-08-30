@@ -4,8 +4,8 @@ import tensorflow as tf
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-#mgh_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_uniformsample_32seq/mgh_test_directory/'
-mgh_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_uniformsample/mgh_test_directory/'
+#mgh_path = '/media/data_cifs/MGH/tf_records/v2_selected_pretrainedi3d_chunks_32seq_combined/mgh_train_directory/'
+mgh_path = '/media/data_cifs/MGH/tf_records/v2_selected_pretrainedi3d_chunks_32seq_combined/mgh_test_directory/'
 mgh_shards = [mgh_path + fi for fi in os.listdir(mgh_path)]
 
 def mgh_read(f):
@@ -26,18 +26,18 @@ def mgh_read(f):
     start = tf.cast(parsed['data/start_frame'], tf.int32)
     end = tf.cast(parsed['data/end_frame'], tf.int32)
 
-    #data_clip = tf.reshape(data_clip, [32, 256, 256, 3])
-    data_clip = tf.reshape(data_clip, [16, 256, 256, 3])
-    data_clips, labels = tf.train.shuffle_batch(
-        [data_clip, label],
+    data_clip = tf.reshape(data_clip, [32, 256, 256, 3])
+    #data_clip = tf.reshape(data_clip, [16, 256, 256, 3])
+    data_clips, labels, vidname = tf.train.shuffle_batch(
+        [data_clip, label, video_name],
         batch_size=1,
         capacity=100,
         min_after_dequeue=50,
         num_threads=2)
 
-    return data_clips, labels
+    return data_clips, labels, vidname, start, end
 
-lc, ls = mgh_read(mgh_shards)
+lc, ls, vname, s, e = mgh_read(mgh_shards)
 
 init_op = tf.group(
     tf.global_variables_initializer(),
@@ -50,7 +50,7 @@ with tf.Session() as sess:
     threads = tf.train.start_queue_runners(coord=coord)
     print(len(mgh_shards))
     for i in range(380):
-        l, la = sess.run([lc, ls])
+        l, la, vn, st, en = sess.run([lc, ls, vname, s, e])
         import ipdb; ipdb.set_trace()
         ctr += 1
     print ctr

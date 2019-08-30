@@ -54,7 +54,6 @@ def opencv_get_clip(video_name='', video_dir='',
     Returns:
         1 'Numpy' video clips of dtype: uint8
     '''
-    video_name = video_name[:-3] + 'avi'
     cap = cv2.VideoCapture(
         os.path.join(
             video_dir,
@@ -153,7 +152,7 @@ def _process_clips_batch(thread_index, ranges,
                         frames_per_clip, frame_height,
                         frame_width, channels,
                         transition, video_dir,
-                        sampling_style='uniform'):      # 'uniform' or 'chunks'  
+                        sampling_style='chunks'):      # 'uniform' or 'chunks'  
     '''Processes and saves list of clips as TFRecord in 1 thread.
         Each thread produces N shards where,
             N = int(num_shards / num_threads)
@@ -227,63 +226,149 @@ def _process_clips_batch(thread_index, ranges,
                 label = np.asarray([label], dtype=np.int32) 
             else:
                 #label = BEHAVIORS_INDICES[label]
+                found = False
                 for k in BEHAVIORS_INDICES.keys():
                     if k in label:
+                        found = True
                         lidx = BEHAVIORS_INDICES[k]
-                label = lidx
+                if found:
+                    label = lidx
+                else:
+                    continue
 
             if (end_frame - start_frame) < frames_per_clip:
                 chosen_idx = np.arange(start_frame, end_frame+1, 1)
+                # Get the clip based on frame number
+                data_clip = opencv_get_clip(
+                    video_name=video_name,
+                    video_dir=video_dir,
+                    start_frame=start_frame,
+                    end_frame=end_frame,
+                    chosen_idx=chosen_idx,
+                    frames_per_clip=frames_per_clip,
+                    frame_height=frame_height,
+                    frame_width=frame_width,
+                    channels=channels)
+
+                cond_1 = not data_clip is None
+
+                if cond_1: 
+                    # Get example protocol buffer
+                    example = feat_example(
+                        label=label,
+                        data_clip=data_clip,
+                        filename=video_name,
+                        start_frame=chosen_idx[0],
+                        end_frame=chosen_idx[-1],
+                        transition=transition)
+
+                    # Serialize to string and write to file
+                    writer.write(
+                        example.SerializeToString())
+                
+                    shard_counter += 1
+                    counter += 1
+
+                    if not counter % 200:
+                        print('%s [thread %d]: Processed %d of %d clips in thread batch.'\
+                            %(datetime.now(), thread_index, counter,\
+                                num_files_in_thread))
+                        sys.stdout.flush()
+                else:
+                    print('%s, [%d, %d], [%s] problematic.'%(video_name,\
+                        start_frame, end_frame, label))
             else:
                 if sampling_style == 'chunks':
                     sample_itr = (end_frame - start_frame) // frames_per_clip
                     stride = (end_frame - start_frame - frames_per_clip) // sample_itr
-                    idxs = np.arange(start_frame, end_frame+1, stride)
+                    for i in range(sample_itr+1):
+                        chosen_idx = np.arange(start_frame + stride * i, start_frame + frames_per_clip + stride * i)
+                        # Get the clip based on frame number
+                        data_clip = opencv_get_clip(
+                            video_name=video_name,
+                            video_dir=video_dir,
+                            start_frame=start_frame,
+                            end_frame=end_frame,
+                            chosen_idx=chosen_idx,
+                            frames_per_clip=frames_per_clip,
+                            frame_height=frame_height,
+                            frame_width=frame_width,
+                            channels=channels)
+
+                        cond_1 = not data_clip is None
+
+                        if cond_1: 
+                            # Get example protocol buffer
+                            example = feat_example(
+                                label=label,
+                                data_clip=data_clip,
+                                filename=video_name,
+                                start_frame=chosen_idx[0],
+                                end_frame=chosen_idx[-1],
+                                transition=transition)
+
+                            # Serialize to string and write to file
+                            writer.write(
+                                example.SerializeToString())
+                        
+                            shard_counter += 1
+                            counter += 1
+
+                            if not counter % 200:
+                                print('%s [thread %d]: Processed %d of %d clips in thread batch.'\
+                                    %(datetime.now(), thread_index, counter,\
+                                        num_files_in_thread))
+                                sys.stdout.flush()
+                        else:
+                            print('%s, [%d, %d], [%s] problematic.'%(video_name,\
+                                start_frame, end_frame, label))
+
+                    
                 elif sampling_style == 'uniform':
                     sample_itr = 0
                     stride = frames_per_clip
                     idxs = np.int32(np.round(np.linspace(start_frame, end_frame, frames_per_clip)))
-                chosen_idx = idxs
+                    chosen_idx = idxs
+                    # Get the clip based on frame number
+                    data_clip = opencv_get_clip(
+                        video_name=video_name,
+                        video_dir=video_dir,
+                        start_frame=start_frame,
+                        end_frame=end_frame,
+                        chosen_idx=chosen_idx,
+                        frames_per_clip=frames_per_clip,
+                        frame_height=frame_height,
+                        frame_width=frame_width,
+                        channels=channels)
 
-            # Get the clip based on frame number
-            data_clip = opencv_get_clip(
-                video_name=video_name,
-                video_dir=video_dir,
-                start_frame=start_frame,
-                end_frame=end_frame,
-                chosen_idx=chosen_idx,
-                frames_per_clip=frames_per_clip,
-                frame_height=frame_height,
-                frame_width=frame_width,
-                channels=channels)
+                    cond_1 = not data_clip is None
 
-            cond_1 = not data_clip is None
+                    if cond_1: 
+                        # Get example protocol buffer
+                        example = feat_example(
+                            label=label,
+                            data_clip=data_clip,
+                            filename=video_name,
+                            start_frame=chosen_idx[0],
+                            end_frame=chosen_idx[-1],
+                            transition=transition)
 
-            if cond_1: 
-                # Get example protocol buffer
-                example = feat_example(
-                    label=label,
-                    data_clip=data_clip,
-                    filename=video_name,
-                    start_frame=chosen_idx[0],
-                    end_frame=chosen_idx[-1],
-                    transition=transition)
+                        # Serialize to string and write to file
+                        writer.write(
+                            example.SerializeToString())
+                    
+                        shard_counter += 1
+                        counter += 1
 
-                # Serialize to string and write to file
-                writer.write(
-                    example.SerializeToString())
-            
-                shard_counter += 1
-                counter += 1
+                        if not counter % 200:
+                            print('%s [thread %d]: Processed %d of %d clips in thread batch.'\
+                                %(datetime.now(), thread_index, counter,\
+                                    num_files_in_thread))
+                            sys.stdout.flush()
+                    else:
+                        print('%s, [%d, %d], [%s] problematic.'%(video_name,\
+                            start_frame, end_frame, label))
 
-                if not counter % 200:
-                    print('%s [thread %d]: Processed %d of %d clips in thread batch.'\
-                        %(datetime.now(), thread_index, counter,\
-                            num_files_in_thread))
-                    sys.stdout.flush()
-            else:
-                print('%s, [%d, %d], [%s] problematic.'%(video_name,\
-                    start_frame, end_frame, label))
         try:
             writer.close()
             print('%s [thread %d]: Wrote %d clips to %s'\
@@ -395,6 +480,7 @@ def control(args=None):
         raises appropriate errors
     '''
 
+    '''
     BEHAVIORS_INDICES = {
         'adjust_items_body_L': 0,
         'adjust_items_body_R': 1,
@@ -412,7 +498,31 @@ def control(args=None):
         'withdraw_reach_gesture_L': 13,
         'withdraw_reach_gesture_R': 14
     }
+    '''
 
+    BEHAVIORS_INDICES = {
+        'adjust_on_body_L': 0,
+        'adjust_on_body_R': 1,
+        'adjust_on_face_or_head_L': 2,
+        'adjust_on_face_or_head_R': 3,
+        'adjust_on_object_L': 4,
+        'adjust_on_object_R': 5,
+        'background': 6,
+        'finemanipulate_object': 7,
+        'grasp_and_move_object_L': 8,
+        'grasp_and_move_object_R': 9,
+        'reach_for_body_L': 10,
+        'reach_for_body_R': 11,
+        'reach_for_face_or_head_L': 12,
+        'reach_for_face_or_head_R': 13,
+        'reach_for_object_L': 14,
+        'reach_for_object_R': 15,
+        'rest_watching': 16,
+        'withdraw_reach_gesture_L': 17,
+        'withdraw_reach_gesture_R': 18
+    }
+    
+    '''
     BEHAVIORS_INDICES_COMBINED = {
         'adjust_items_body': 0,
         'adjust_items_face_or_head': 1,
@@ -421,14 +531,37 @@ def control(args=None):
         'grasp_and_move': 4,
         'reach_face_or_head': 5,
         'reach_nearobject': 6,
-        'rest': 7,
-        'withdraw_reach_gesture': 8,
+        'withdraw_reach_gesture': 7,
+        #'rest': 7,
+        #'withdraw_reach_gesture': 8,
     }
+    '''
+
+    BEHAVIORS_INDICES_COMBINED = {
+        'adjust_on_body': 0,
+        'adjust_on_face_or_head': 1,
+        'adjust_on_object': 2,
+        'background': 3,
+        'finemanipulate_object': 4,
+        'grasp_and_move_object': 5,
+        'reach_for_body': 6,
+        'reach_for_face_or_head': 7,
+        'reach_for_object': 8,
+        'rest_watching': 9,
+        'withdraw_reach_gesture': 10
+    }
+   
+    '''
+    BEHAVIORS_INDICES_BINARY = {
+        'reach_face_or_head': 0,
+        'reach_nearobject': 1,
+    }
+    '''
 
     ##### DIRECTORIES OF INTEREST
     BASE_DIR = '/media/data_cifs/MGH/'
-    EXP_NAME = 'v1_selected_pretrainedi3d_uniformsample_32seq_combined'
-    PICKLE_SPLIT = 'v1_selected'
+    EXP_NAME = 'v2_selected_pretrainedi3d_chunks_32seq_combined'
+    PICKLE_SPLIT = 'v2_selected'
     PICKLE_DIR = os.path.join(BASE_DIR, 'pickle_files', PICKLE_SPLIT)
     VIDEO_DIR = os.path.join(
         BASE_DIR,
@@ -481,8 +614,8 @@ def control(args=None):
         num_shards=args.num_shards,
         shard_dir=SHARDS_DIR,
         num_threads=num_threads,
-        #BEHAVIORS_INDICES=BEHAVIORS_INDICES,
         BEHAVIORS_INDICES=BEHAVIORS_INDICES_COMBINED,
+        #BEHAVIORS_INDICES=BEHAVIORS_INDICES_BINARY,
         phase=args.phase,
         frames_per_clip=args.frames_per_clip,
         frame_height=args.frame_height,

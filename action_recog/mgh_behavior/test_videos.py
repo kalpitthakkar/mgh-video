@@ -17,7 +17,7 @@ from absl import flags
 from absl import app
 
 # Get test shards from bucket
-test_shards_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_uniformsample_32seq_combined/mgh_test_directory'
+test_shards_path = '/media/data_cifs/MGH/tf_records/v1_selected_pretrainedi3d_chunks_32seq_combined/mgh_test_directory'
 shards = tf.gfile.Glob(
     os.path.join(
         test_shards_path,
@@ -31,7 +31,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     'model_folder_name',
-    default='v1_uniformsample_32seq_combined_v3-8_b256_15classes_adamlre-3_i3d_weightedloss_5c+logits',
+    default='v1_chunks_32seq_combined_v3-8_b256_9classes_adamlre-3_i3d_weightedloss_earlyendpoint_block+logits',
     help='To mention the model path')
 
 flags.DEFINE_integer(

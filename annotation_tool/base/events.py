@@ -14,7 +14,7 @@ class EventHandler(object):
             return False
         
     def updateAnnots(self, annotObj, frame_n, image):
-        joints = annotObj.joints.keys()
+        joints = list(annotObj.joints.keys())
         annot_df = annotObj.joints_df[annotObj.joints_df.frame_n == frame_n][joints]
         if annot_df.empty:
             return
@@ -22,7 +22,8 @@ class EventHandler(object):
         annotObj.image = image
         annotObj.frame_n = frame_n
         for joint in annot_df:
-            annotObj.joints[joint].x_center, annotObj.joints[joint].y_center, _score = annot_df[joint].values[0].split('-')
+            vals = annot_df[joint].values[0].split('-')
+            annotObj.joints[joint].x_center, annotObj.joints[joint].y_center = vals[0], vals[1]
             #print(annot_df[joint].values[0].split('-'))
 
         self.clear_canvas_draw(annotObj)
@@ -36,7 +37,7 @@ class EventHandler(object):
             if joint.x_center == 0:
                 return
 
-            x, y, r = int(joint.x_center), int(joint.y_center), int(joint.radius)
+            x, y, r = int(float(joint.x_center)), int(float(joint.y_center)), int(float(joint.radius))
             cv2.circle(temp, (x, y), r, annotObj.colorDict[joint_name], -1)
             if joint.focus:
                 cv2.circle(temp, (x, y), r, (255, 255, 255), 2)
@@ -70,7 +71,7 @@ class EventHandler(object):
                 if joint.x_center == 0:
                     continue
 
-                if self.pointInCircle(x, y, int(joint.x_center), int(joint.y_center), int(joint.radius)):
+                if self.pointInCircle(x, y, int(float(joint.x_center)), int(float(joint.y_center)), int(float(joint.radius))):
                     annotObj.selectedJoint = annotObj.joints[joint_name]
                     annotObj.selectedJoint.x_center = x
                     annotObj.selectedJoint.y_center = y
@@ -108,7 +109,7 @@ class EventHandler(object):
             if joint.x_center == 0:
                 return
             
-            if self.pointInCircle(x, y, int(joint.x_center), int(joint.y_center), int(joint.radius)):
+            if self.pointInCircle(x, y, int(float(joint.x_center)), int(float(joint.y_center)), int(float(joint.radius))):
                 joint.focus = not joint.focus
                 print(joint_name + ' - Focus ' + str(joint.focus))
             else:
