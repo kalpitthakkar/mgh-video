@@ -14,6 +14,8 @@ import pickle
 # central reservoir classes
 import inp_pipeline
 from central_reservoir.models import i3d
+from central_reservoir.utils.layers import avgpool
+from central_reservoir.utils.layers import conv_batchnorm_relu
 
 from tensorflow.python.estimator import estimator
 from tensorflow.contrib.training.python.training import evaluation
@@ -23,6 +25,66 @@ from tensorflow.contrib import summary
 
 #TODO: 1. 5-D Augmentation scheme, 2. Document structure,
 # 3. Fix bfloat16 issue.
+
+#BEHAVIORS_INDICES = {
+#    'adjust_items_body_L': 0,
+#    'adjust_items_body_R': 1,
+#    'adjust_items_face_or_head_L': 2,
+#    'adjust_items_face_or_head_R': 3,
+#    'background': 4,
+#    'finemanipulate_object': 5,
+#    'grasp_and_move_L': 6,
+#    'grasp_and_move_R': 7,
+#    'reach_face_or_head_L': 8,
+#    'reach_face_or_head_R': 9,
+#    'reach_nearobject_L': 10,
+#    'reach_nearobject_R': 11,
+#    'rest': 12,
+#    'withdraw_reach_gesture_L': 13,
+#    'withdraw_reach_gesture_R': 14
+#}
+
+BEHAVIORS_INDICES = {
+    'adjust_items_body': 0,
+    'adjust_items_face_or_head': 1,
+    'background': 2,
+    'finemanipulate_object': 3,
+    'grasp_and_move': 4,
+    'reach_face_or_head': 5,
+    'reach_nearobject': 6,
+    'rest': 7,
+    'withdraw_reach_gesture': 8
+}
+
+#class_weights = {
+# 'adjust_items_body_L': 43.0,
+# 'adjust_items_body_R': 41.0,
+# 'adjust_items_face_or_head_L': 44.0,
+# 'adjust_items_face_or_head_R': 42.0,
+# 'background': 90.0,
+# 'finemanipulate_object': 26.0,
+# 'grasp_and_move_L': 15.0,
+# 'grasp_and_move_R': 19.0,
+# 'reach_face_or_head_L': 52.0,
+# 'reach_face_or_head_R': 41.0,
+# 'reach_nearobject_L': 24.0,
+# 'reach_nearobject_R': 45.0,
+# 'rest': 48.0,
+# 'withdraw_reach_gesture_L': 57.0,
+# 'withdraw_reach_gesture_R': 72.0
+#}
+
+class_weights = {
+ 'adjust_items_body': 84.0,
+ 'adjust_items_face_or_head': 86.0,
+ 'background': 90.0,
+ 'finemanipulate_object': 26.0,
+ 'grasp_and_move': 34.0,
+ 'reach_face_or_head': 93.0,
+ 'reach_nearobject': 69.0,
+ 'rest': 48.0,
+ 'withdraw_reach_gesture': 129.0,
+}
 
 FLAGS = flags.FLAGS
 
@@ -75,11 +137,41 @@ flags.DEFINE_string(
             'summaries are stored')
 
 ##### Model specific flags
+flags.DEFINE_string(
+    'final_endpoint',
+    default='Logits',
+    help='Which endpoint to stop at when constructing the network graph')
+
+flags.DEFINE_integer(
+    'time_divisor',
+    default=4,
+    help='Subsample T dimension from the output of endpoint in network to feed to Logits')
+
+flags.DEFINE_integer(
+    'hw_divisor',
+    default=12,
+    help='Subsample H,W dimension from the output of endpoint in network to feed to Logits')
+
+flags.DEFINE_string(
+    'warm_start_vars',
+    default='Conv3d_*w, Conv3d_*beta, Mixed_3*w, Mixed_3*beta, Mixed_4*w, Mixed_4*beta, Mixed_5*w, Mixed_5*beta',
+    help='List of REs that help to warm start the network weights during initialization')
+
+flags.DEFINE_string(
+    'optimize_var_scopes',
+    default='Mixed_5b,Logits',
+    help='List of REs that help to warm start the network weights during initialization')
+
 flags.DEFINE_integer(
     'profile_every_n_steps',
     default=0,
     help='Number of steps between collecting profiles if'
             'larger than 0')
+
+flags.DEFINE_bool(
+    'double_logits',
+    default=False,
+    help='Create model with two FC layers')
 
 flags.DEFINE_bool(
     'use_batch_norm',
@@ -184,6 +276,11 @@ flags.DEFINE_bool(
     'use_cache',
     default=False,
     help='Enable cache for training input')
+
+flags.DEFINE_string(
+    'class_num_samples',
+    default='/media/data_cifs/MGH/pickle_files/v1_selected/class_weights.pkl',
+    help='Path to pickle file containing the number of samples per class')
 
 ##### Training related flags
 flags.DEFINE_string(
@@ -312,7 +409,7 @@ def i3d_model_fn(features, labels, mode, params):
 
     def build_network():
         network = i3d.InceptionI3d(
-            final_endpoint='Logits',
+            final_endpoint=FLAGS.final_endpoint,
             use_batch_norm=FLAGS.use_batch_norm,
             use_cross_replica_batch_norm=FLAGS.use_cross_replica_batch_norm,
             num_cores=FLAGS.train_num_cores,
@@ -320,11 +417,62 @@ def i3d_model_fn(features, labels, mode, params):
             spatial_squeeze=True,
             dropout_keep_prob=0.7)
 
-        logits, end_points = network(
-            inputs=features['video'],
-            is_training=(mode == tf.estimator.ModeKeys.TRAIN))
+        if FLAGS.final_endpoint == 'Logits':
+            logits, end_points = network(
+                inputs=features['video'],
+                is_training=(mode == tf.estimator.ModeKeys.TRAIN))
 
-        return logits
+            return logits
+        else:
+            descriptors, end_points = network(
+                inputs=features['video'],
+                is_training=(mode == tf.estimator.ModeKeys.TRAIN))
+            # From the descriptors, we need to downsample now. That should be an input argument.
+            t_subsample_factor = FLAGS.time_divisor
+            hw_subsample_factor = FLAGS.hw_divisor
+            spatial_squeeze = True
+            end_point = 'Logits'
+            with tf.variable_scope(end_point):
+                fc_inputs = avgpool(descriptors, ksize=[1, t_subsample_factor, hw_subsample_factor, hw_subsample_factor, 1],
+                        strides=[1, 1, 1, 1, 1], padding='VALID')
+                get_shape = fc_inputs.get_shape().as_list()
+                print('{} / Average-pool3D: {}'.format(end_point, get_shape))
+                end_points[end_point + '_average_pool3d'] = fc_inputs
+
+                # Dropout
+                fc_inputs = tf.nn.dropout(fc_inputs, 0.7)
+
+                # Use two FC layers
+                if FLAGS.double_logits:
+                    fc_inputs = conv_batchnorm_relu(fc_inputs, 'Conv3d_xx_1x1', 256,
+                            kernel_size=1, stride=1, use_batch_norm=FLAGS.use_batch_norm,
+                            use_cross_replica_batch_norm=FLAGS.use_cross_replica_batch_norm,
+                            is_training=(mode == tf.estimator.ModeKeys.TRAIN),
+                            num_cores=FLAGS.train_num_cores)
+                    get_shape = fc_inputs.get_shape().as_list()
+                    print('{} / Conv3d_xx_1x1 : {}'.format(end_point, get_shape))
+            
+                # 1x1x1 Conv, stride 1
+                logits = conv_batchnorm_relu(fc_inputs, 'Conv3d_0c_1x1', FLAGS.num_classes,
+                    kernel_size=1, stride=1, activation=None,
+                    use_batch_norm=False, use_cross_replica_batch_norm=False,
+                    is_training=(mode == tf.estimator.ModeKeys.TRAIN), num_cores=FLAGS.train_num_cores)
+                get_shape = logits.get_shape().as_list()
+                print('{} / Conv3d_0c_1x1 : {}'.format(end_point, get_shape))
+
+		if spatial_squeeze:
+                    # Removes dimensions of size 1 from the shape of a tensor
+                    # Specify which dimensions have to be removed: 2 and 3
+                    logits = tf.squeeze(logits, [2, 3], name='SpatialSqueeze')
+                    get_shape = logits.get_shape().as_list()
+                    print('{} / Spatial Squeeze : {}'.format(end_point, get_shape))
+
+            averaged_logits = tf.reduce_mean(logits, axis=1) # [N, num_classes]
+            get_shape = averaged_logits.get_shape().as_list()
+            print('{} / Averaged Logits : {}'.format(end_point, get_shape))
+
+            end_points[end_point] = averaged_logits
+            return averaged_logits
 
     # Speed up computation, saves memory
     if FLAGS.precision == 'bfloat16':
@@ -358,10 +506,23 @@ def i3d_model_fn(features, labels, mode, params):
         FLAGS.num_classes,
         dtype=tf.float32)
     
+    # Scale the cross entropy by the weight value for that class (handling imbalance)
+    cls_numbers = class_weights
+    cls_weights = []
+    tot = 0
+    for k,v in cls_numbers.items():
+        tot += v
+    for k,v in sorted(cls_numbers.items()):
+        cls_weights.append(tot/v)
+    #print(cls_weights)
+    weights = tf.constant(cls_weights)
+    weights_to_apply = tf.gather(weights, labels)
+
     cross_entropy = tf.losses.softmax_cross_entropy(
         logits=logits,
         onehot_labels=one_hot_labels,
-        label_smoothing=FLAGS.label_smoothing)
+        label_smoothing=FLAGS.label_smoothing,
+        weights=weights_to_apply)
 
     # Add weight decay to the loss of for non-batch normalization variables.
     loss = cross_entropy + FLAGS.weight_decay * tf.add_n(
@@ -395,8 +556,15 @@ def i3d_model_fn(features, labels, mode, params):
         steps_per_epoch = FLAGS.num_train_videos / FLAGS.train_batch_size
         current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
 
-        # For MGH, we only need to optimize the FC layers
-        vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Logits')
+        var_scopes = FLAGS.optimize_var_scopes.split(',')
+        var_scopes = [x.strip() for x in var_scopes]
+        if len(var_scopes) > 0:
+            vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=var_scopes[0])
+            for sc in var_scopes[1:]:
+                vars_to_optimize += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=sc)
+        else:
+            vars_to_optimize = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+
         # LARS is a large batch optimizer. LARS enables higher accuracy at batch
         # 16K and larger batch sizes.
         if FLAGS.train_batch_size >= 16384 and FLAGS.enable_lars:
@@ -687,20 +855,32 @@ def main(unused_argv):
             besides the one on CPU.
     '''
     
-    ws = tf.estimator.WarmStartSettings(
-        ckpt_to_initialize_from=FLAGS.init_checkpoint,
-        vars_to_warm_start=["Conv3d_*w", "Conv3d_*beta", "Mixed_*beta", "Mixed_*w"]
-    )
+    if not FLAGS.init_checkpoint == 'None':
+        warm_start_vars = FLAGS.warm_start_vars.split(',')
+        warm_start_vars = [x.strip() for x in warm_start_vars]
+        ws = tf.estimator.WarmStartSettings(
+            ckpt_to_initialize_from=FLAGS.init_checkpoint,
+            vars_to_warm_start=warm_start_vars
+        )
 
-    i3d_classifier = tf.contrib.tpu.TPUEstimator(
-        use_tpu=FLAGS.use_tpu,
-        model_fn=i3d_model_fn,
-        config=config,
-        train_batch_size=FLAGS.train_batch_size,
-        eval_batch_size=FLAGS.eval_batch_size,
-        predict_batch_size=FLAGS.predict_batch_size,
-        export_to_tpu=FLAGS.export_to_tpu,
-        warm_start_from=ws)
+        i3d_classifier = tf.contrib.tpu.TPUEstimator(
+            use_tpu=FLAGS.use_tpu,
+            model_fn=i3d_model_fn,
+            config=config,
+            train_batch_size=FLAGS.train_batch_size,
+            eval_batch_size=FLAGS.eval_batch_size,
+            predict_batch_size=FLAGS.predict_batch_size,
+            export_to_tpu=FLAGS.export_to_tpu,
+            warm_start_from=ws)
+    else:
+        i3d_classifier = tf.contrib.tpu.TPUEstimator(
+            use_tpu=FLAGS.use_tpu,
+            model_fn=i3d_model_fn,
+            config=config,
+            train_batch_size=FLAGS.train_batch_size,
+            eval_batch_size=FLAGS.eval_batch_size,
+            predict_batch_size=FLAGS.predict_batch_size,
+            export_to_tpu=FLAGS.export_to_tpu)
 
     if FLAGS.mode == 'train_and_eval' and FLAGS.train_num_cores > 8:
         i3d_eval = tf.contrib.tpu.TPUEstimator(
@@ -737,7 +917,7 @@ def main(unused_argv):
             cache=FLAGS.use_cache and is_training,
             use_bfloat16=use_bfloat16,
             target_image_size=224,
-            num_frames=16,
+            num_frames=32,      # num_frames_change_here
             num_classes=15,
             num_parallel_calls=FLAGS.num_parallel_calls,
             list_of_augmentations=list_of_augmentations)
