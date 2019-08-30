@@ -44,16 +44,36 @@ from tensorflow.contrib import summary
 #    'withdraw_reach_gesture_R': 14
 #}
 
-BEHAVIORS_INDICES = {
-    'adjust_items_body': 0,
-    'adjust_items_face_or_head': 1,
-    'background': 2,
-    'finemanipulate_object': 3,
-    'grasp_and_move': 4,
-    'reach_face_or_head': 5,
-    'reach_nearobject': 6,
-    'rest': 7,
-    'withdraw_reach_gesture': 8
+#BEHAVIORS_INDICES = {
+#    'adjust_items_body': 0,
+#    'adjust_items_face_or_head': 1,
+#    'background': 2,
+#    'finemanipulate_object': 3,
+#    'grasp_and_move': 4,
+#    'reach_face_or_head': 5,
+#    'reach_nearobject': 6,
+#    'withdraw_reach_gesture': 7
+    #'rest': 7,
+    #'withdraw_reach_gesture': 8
+#}
+
+#BEHAVIORS_INDICES = {
+#    'reach_face_or_head': 0,
+#    'reach_nearobject': 1,
+#}
+
+BEHAVIORS_INDICES_COMBINED = {
+    'adjust_on_body': 0,
+    'adjust_on_face_or_head': 1,
+    'adjust_on_object': 2,
+    'background': 3,
+    'finemanipulate_object': 4,
+    'grasp_and_move_object': 5,
+    'reach_for_body': 6,
+    'reach_for_face_or_head': 7,
+    'reach_for_object': 8,
+    'rest_watching': 9,
+    'withdraw_reach_gesture': 10
 }
 
 #class_weights = {
@@ -74,16 +94,35 @@ BEHAVIORS_INDICES = {
 # 'withdraw_reach_gesture_R': 72.0
 #}
 
+#class_weights = {
+# 'adjust_items_body': 84.0,
+# 'adjust_items_face_or_head': 86.0,
+# 'background': 90.0,
+# 'finemanipulate_object': 26.0,
+# 'grasp_and_move': 34.0,
+# 'reach_face_or_head': 93.0,
+# 'reach_nearobject': 69.0,
+ #'rest': 48.0,
+# 'withdraw_reach_gesture': 129.0,
+#}
+
+#class_weights = {
+# 'reach_face_or_head': 93.0,
+# 'reach_nearobject': 69.0,
+#}
+
 class_weights = {
- 'adjust_items_body': 84.0,
- 'adjust_items_face_or_head': 86.0,
- 'background': 90.0,
- 'finemanipulate_object': 26.0,
- 'grasp_and_move': 34.0,
- 'reach_face_or_head': 93.0,
- 'reach_nearobject': 69.0,
- 'rest': 48.0,
- 'withdraw_reach_gesture': 129.0,
+    'adjust_on_body': 262.0,
+    'adjust_on_face_or_head': 388.0,
+    'adjust_on_object': 111.0,
+    'background': 225.0,
+    'finemanipulate_object': 135.0,
+    'grasp_and_move_object': 325.0,
+    'reach_for_body': 102.0,
+    'reach_for_face_or_head': 458.0,
+    'reach_for_object': 468.0,
+    'rest_watching': 148.0,
+    'withdraw_reach_gesture': 503.0
 }
 
 FLAGS = flags.FLAGS
@@ -226,7 +265,7 @@ flags.DEFINE_integer(
 
 flags.DEFINE_integer(
     'num_classes',
-    default=9,
+    default=2,
     help='Number of classes '
         '9 for mice, 101 for UCF')
 
